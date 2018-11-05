@@ -11,7 +11,8 @@ import (
 func main() {
 	version := os.Getenv("VERSION")
 	fmt.Println("Expected version is: ", version)
-	if actualVersion := requestVersion(); version != actualVersion {
+	actualVersion := requestVersion()
+	if version != actualVersion {
 		fmt.Println("Actual version is: ", actualVersion)
 		panic("Actual version is not equals to expected")
 	}
