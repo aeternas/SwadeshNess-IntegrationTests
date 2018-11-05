@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -9,8 +10,8 @@ import (
 )
 
 func main() {
-	version := string(os.Getenv("VERSION"))
-	log.Println("Expected version is: ", version)
+	var version string = fmt.Sprintf("%q", os.Getenv("VERSION"))
+	log.Println("Expected version is:", version)
 	i := 0
 	var actualVersion string
 	for {
