@@ -12,6 +12,7 @@ func main() {
 	version := os.Getenv("VERSION")
 	fmt.Println("Expected version is: ", version)
 	if actualVersion := requestVersion(); version != actualVersion {
+		fmt.Println("Actual version is: ", actualVersion)
 		panic("Actual version is not equals to expected")
 	}
 	httpClient := &http.Client{Timeout: time.Second * 15}
