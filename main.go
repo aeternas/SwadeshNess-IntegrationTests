@@ -38,23 +38,12 @@ func requestVersion() string {
 	httpClient := &http.Client{Timeout: time.Second * 15}
 	versionUrl := "http://vpered.su:8080/dev/version"
 
-	req, err := http.NewRequest("GET", versionUrl, nil)
+	req, _ := http.NewRequest("GET", versionUrl, nil)
 
-	if err != nil {
-		panic(err)
-	}
-
-	resp, err := httpClient.Do(req)
-
-	if err != nil {
-		panic(err)
-	}
+	resp, _ := httpClient.Do(req)
 
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		panic("Invalid response status")
-	}
 	bodyBytes, _ := ioutil.ReadAll(resp.Body)
 	bodyString := string(bodyBytes)
 
