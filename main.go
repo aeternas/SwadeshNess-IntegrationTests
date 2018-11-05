@@ -22,7 +22,7 @@ func main() {
 		i++
 	}
 	if version != actualVersion {
-		log.Fatalf("Actual version doesn't match to expected. Actual is: ", actualVersion)
+		log.Fatalf("Actual version doesn't match to expected. Actual is: %v", actualVersion)
 	}
 
 	httpClient := &http.Client{Timeout: time.Second * 15}
