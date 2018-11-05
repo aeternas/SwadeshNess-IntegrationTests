@@ -11,6 +11,7 @@ import (
 func main() {
 	var version string = os.Getenv("VERSION")
 	log.Println("Expected version is:", version)
+	log.Printf("Expected version is: %vsome", version)
 	i := 0
 	var actualVersion string
 	for {
