@@ -11,7 +11,16 @@ import (
 func main() {
 	version := os.Getenv("VERSION")
 	fmt.Println("Expected version is: ", version)
-	actualVersion := requestVersion()
+	i := 0
+	var actualVersion string
+	for {
+		actualVersion = requestVersion()
+		if i >= 10 || actualVersion == version {
+			break
+		}
+		time.Sleep(2 * time.Second)
+		i++
+	}
 	if version != actualVersion {
 		fmt.Println("Actual version is: ", actualVersion)
 		panic("Actual version is not equals to expected")
