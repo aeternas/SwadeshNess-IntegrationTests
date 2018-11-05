@@ -13,5 +13,3 @@ RUN apk --no-cache add ca-certificates
 COPY --from=0 /go/src/github.com/aeternas/SwadeshNess-IntegrationTests .
 
 EXPOSE 8080
-
-CMD ["./SwadeshNess-IntegrationTests"]
