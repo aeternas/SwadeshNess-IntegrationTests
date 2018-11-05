@@ -8,7 +8,7 @@ import (
 
 func main() {
 	httpClient := &http.Client{Timeout: time.Second * 15}
-	url := "http://vpered.su:8080/dev/?translate=Hello+World&group=Romanic"
+	url := "http://vpered.su/?translate=Hello+World&group=Romanic"
 	fmt.Println("URL:>", url)
 
 	req, err := http.NewRequest("GET", url, nil)
