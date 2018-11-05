@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -10,7 +10,7 @@ import (
 
 func main() {
 	version := os.Getenv("VERSION")
-	fmt.Println("Expected version is: ", version)
+	log.Println("Expected version is: ", version)
 	i := 0
 	var actualVersion string
 	for {
@@ -22,9 +22,9 @@ func main() {
 		i++
 	}
 	if version != actualVersion {
-		fmt.Println("Actual version is: ", actualVersion)
-		panic("Actual version is not equals to expected")
+		log.Fatalf("Actual version doesn't match to expected. Actual is: ", actualVersion)
 	}
+
 	httpClient := &http.Client{Timeout: time.Second * 15}
 	url := "http://vpered.su:8080/dev/?translate=Hello+World&group=Romanic"
 	fmt.Println("URL:>", url)
@@ -51,7 +51,6 @@ func main() {
 func requestVersion() string {
 	httpClient := &http.Client{Timeout: time.Second * 15}
 	versionUrl := "http://vpered.su:8080/dev/version"
-	fmt.Println("VERSIONURL:>", versionUrl)
 
 	req, err := http.NewRequest("GET", versionUrl, nil)
 
@@ -64,6 +63,7 @@ func requestVersion() string {
 	if err != nil {
 		panic(err)
 	}
+
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
