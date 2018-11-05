@@ -27,25 +27,11 @@ func main() {
 		log.Fatalf("Actual version doesn't match to expected. Actual is: %v", actualVersion)
 	}
 
-	httpClient := &http.Client{Timeout: time.Second * 15}
-	url := "http://vpered.su:8080/dev/?translate=Hello+World&group=Romanic"
-	req, err := http.NewRequest("GET", url, nil)
+	requestEndpoint("http://vpered.su:8080/dev/?translate=Hello+World&group=Romanic")
+	log.Printf("Translation OK")
 
-	if err != nil {
-		panic(err)
-	}
-
-	resp, err := httpClient.Do(req)
-
-	if err != nil {
-		panic(err)
-	}
-
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		panic("Invalid response status")
-	}
+	requestEndpoint("http://vpered.su:8080/dev/groups")
+	log.Printf("Groups OK")
 }
 
 func requestVersion() string {
@@ -73,4 +59,26 @@ func requestVersion() string {
 	bodyString := string(bodyBytes)
 
 	return bodyString
+}
+
+func requestEndpoint(e string) {
+	httpClient := &http.Client{Timeout: time.Second * 15}
+	url := "http://vpered.su:8080/dev/?translate=Hello+World&group=Romanic"
+	req, err := http.NewRequest("GET", url, nil)
+
+	if err != nil {
+		panic(err)
+	}
+
+	resp, err := httpClient.Do(req)
+
+	if err != nil {
+		panic(err)
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		panic("Invalid response status")
+	}
 }
