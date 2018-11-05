@@ -41,19 +41,19 @@ func requestVersion() string {
 	req, err := http.NewRequest("GET", versionUrl, nil)
 
 	if err != nil {
-		panic(err)
+		log.Printf("Error during initializing request")
 	}
 
 	resp, err := httpClient.Do(req)
 
 	if err != nil {
-		panic(err)
+		log.Printf("Error during executing request")
 	}
 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		panic("Invalid response status")
+		return string(resp.StatusCode)
 	}
 	bodyBytes, _ := ioutil.ReadAll(resp.Body)
 	bodyString := string(bodyBytes)
