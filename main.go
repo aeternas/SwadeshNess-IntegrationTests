@@ -39,7 +39,7 @@ func main() {
 
 func requestVersion() string {
 	httpClient := &http.Client{Timeout: time.Second * 15}
-	versionUrl := "http://vpered.su:8080/dev/version"
+	versionUrl := "http://vpered.su:8080/version"
 	fmt.Println("VERSIONURL:>", versionUrl)
 
 	req, err := http.NewRequest("GET", versionUrl, nil)
