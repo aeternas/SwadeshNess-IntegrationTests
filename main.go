@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	version := os.Getenv("VERSION")
+	version := string(os.Getenv("VERSION"))
 	log.Println("Expected version is: ", version)
 	i := 0
 	var actualVersion string
@@ -19,6 +19,7 @@ func main() {
 			break
 		}
 		time.Sleep(2 * time.Second)
+		log.Printf("Seems actual version doesn't match to expected, retrying...")
 		i++
 	}
 	if version != actualVersion {
