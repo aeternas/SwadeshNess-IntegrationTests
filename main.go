@@ -63,7 +63,7 @@ func requestVersion() string {
 
 func requestEndpoint(e string) {
 	httpClient := &http.Client{Timeout: time.Second * 15}
-	url := "http://vpered.su:8080/dev/?translate=Hello+World&group=Romanic"
+	url := e
 	req, err := http.NewRequest("GET", url, nil)
 
 	if err != nil {
