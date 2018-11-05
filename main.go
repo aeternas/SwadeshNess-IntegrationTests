@@ -9,8 +9,8 @@ import (
 )
 
 func main() {
-	version := string(os.Getenv("VERSION"))
-	log.Println("Expected version is: ", version)
+	var version string = os.Getenv("VERSION")
+	log.Println("Expected version is:", version)
 	i := 0
 	var actualVersion string
 	for {
