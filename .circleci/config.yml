@@ -1,0 +1,97 @@
+# Golang CircleCI 2.0 configuration file
+#
+# Check https://circleci.com/docs/2.0/language-go/ for more details
+version: 2
+jobs:
+  checkout:
+    docker:
+      - image: circleci/golang:1.10
+    working_directory: /go/src/github.com/aeternas/SwadeshNess-IntegrationTests
+    steps:
+      - run:
+          name: Checkout
+          command: |
+            mkdir ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+            git clone --depth=50 -b $CIRCLE_BRANCH $CIRCLE_REPOSITORY_URL ./ && \
+            git checkout $CIRCLE_SHA1
+      - restore_cache:
+          keys:
+          # This branch if available
+          - v1-dep-{{ .Branch }}-
+          # Default branch if not
+          - v1-dep-master-
+          # Any branch if there are none on the default branch - this should be unnecessary if you have your default branch configured correctly
+          - v1-dep-
+      - run: go get -v -t -d ./...
+      - save_cache:
+         key: v1-dep-{{ .Branch }}-{{ epoch }}
+         paths:
+         - vendor/bundle
+         - ~/virtualenvs
+         - ~/.m2
+         - ~/.ivy2
+         - ~/.bundle
+         - ~/.go_workspace
+         - ~/.gradle
+         - ~/.cache/bower
+      - persist_to_workspace:
+          root: .
+          paths:
+            - .
+  lint:
+    docker:
+      - image: circleci/golang:1.10
+    working_directory: /go/src/github.com/aeternas/SwadeshNess-IntegrationTests
+    steps:
+      - run:
+          name: Checkout
+          command: |
+            mkdir ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+            git clone --depth=50 -b $CIRCLE_BRANCH $CIRCLE_REPOSITORY_URL ./ && \
+            git checkout $CIRCLE_SHA1
+      - attach_workspace:
+          at: /go/src/github.com/aeternas/SwadeshNess-IntegrationTests
+      # specify any bash command here prefixed with `run: `
+      - run: 
+          name: linting
+          command: go install ./vendor/github.com/golangci/golangci-lint/cmd/golangci-lint && golangci-lint run
+  test:
+    docker:
+      - image: circleci/golang:1.10
+    working_directory: /go/src/github.com/aeternas/SwadeshNess-IntegrationTests
+    steps:
+      - attach_workspace:
+          at: /go/src/github.com/aeternas/SwadeshNess-IntegrationTests
+      - run:
+          name: tests
+          command: go test -v ./...
+  deploy:
+    docker:
+      - image: circleci/golang:1.10
+    working_directory: /go/src/github.com/aeternas/SwadeshNess-IntegrationTests
+    steps:
+      - attach_workspace:
+          at: /go/src/github.com/aeternas/SwadeshNess-IntegrationTests
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: Containerize, Push and Deploy
+          command: |
+            docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
+            docker build -t aeternas/swadeshness-tests:$CIRCLE_BRANCH . && \
+            docker push aeternas/swadeshness-tests:$CIRCLE_BRANCH
+workflows:
+  version: 2
+  lint-test-deploy:
+    jobs:
+      - checkout
+      - lint:
+          requires:
+            - checkout
+      - test:
+          requires:
+            - checkout
+      - deploy:
+          requires:
+            - lint
+            - test
