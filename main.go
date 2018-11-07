@@ -22,7 +22,7 @@ func main() {
 		if i >= 10 || actualVersion == version {
 			break
 		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(10 * time.Second)
 		log.Printf("Seems actual version doesn't match to expected, retrying...")
 		i++
 	}
