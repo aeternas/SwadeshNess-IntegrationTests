@@ -3,7 +3,7 @@
 # Check https://circleci.com/docs/2.0/language-go/ for more details
 
 _defaults: &defaults
-  run: &getDeps go get -v -t ./...
+  run: &getDeps go get -v -t -d ./...
 
 version: 2
 jobs:
@@ -56,6 +56,7 @@ jobs:
       - attach_workspace:
           at: /go/src/github.com/aeternas/SwadeshNess-IntegrationTests
       # specify any bash command here prefixed with `run: `
+      - run: *getDeps
       - run: 
           name: linting
           command: go install ./vendor/github.com/golangci/golangci-lint/cmd/golangci-lint && golangci-lint run
@@ -66,6 +67,7 @@ jobs:
     steps:
       - attach_workspace:
           at: /go/src/github.com/aeternas/SwadeshNess-IntegrationTests
+      - run: *getDeps
       - run:
           name: tests
           command: go test -v ./...
