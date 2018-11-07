@@ -59,7 +59,7 @@ jobs:
       - run: *getDeps
       - run: 
           name: linting
-          command: golangci-lint run
+          command: go install ./vendor/github.com/golangci/golangci-lint/cmd/golangci-lint && golangci-lint run
   test:
     docker:
       - image: circleci/golang:1.10
