@@ -55,7 +55,13 @@ func requestVersion() string {
 	if resp.StatusCode != 200 {
 		return string(resp.StatusCode)
 	}
-	bodyBytes, _ := ioutil.ReadAll(resp.Body)
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+
+	if err != nil {
+		log.Printf("Error during unmarshalling, trying to repeat")
+		return "Error!"
+	}
+
 	bodyString := string(bodyBytes)
 
 	return bodyString
