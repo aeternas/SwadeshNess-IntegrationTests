@@ -82,7 +82,7 @@ func requestGroups() {
 		log.Fatalf("Error unmarshalling body")
 	}
 
-	if data[0].Name != "Turkic" {
+	if data[0].Name != "Turkic1" {
 		log.Fatalf("Group is not Turkic")
 	}
 }
