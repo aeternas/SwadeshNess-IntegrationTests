@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	languages "github.com/aeternas/SwadeshNess-packages/language"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -31,7 +33,7 @@ func main() {
 	requestEndpoint("http://vpered.su/?translate=Hello+World&group=Romanic")
 	log.Printf("Translation OK")
 
-	requestEndpoint("http://vpered.su/groups")
+	requestGroups()
 	log.Printf("Groups OK")
 }
 
@@ -68,7 +70,24 @@ func requestVersion() string {
 	return bodyString
 }
 
-func requestEndpoint(e string) {
+func requestGroups() {
+	code, body := requestEndpoint("http://vpered.su/groups")
+	if code != 200 {
+		log.Fatalf("Request groups endpoint response code is not 200")
+	}
+
+	var data []languages.LanguageGroup
+
+	if err := json.Unmarshal(body, &data); err != nil {
+		log.Fatalf("Error unmarshalling body")
+	}
+
+	if data[0].Name != "Turkic" {
+		log.Fatalf("Group is not Turkic")
+	}
+}
+
+func requestEndpoint(e string) (int, []byte) {
 	httpClient := &http.Client{Timeout: time.Second * 15}
 	url := e
 	req, err := http.NewRequest("GET", url, nil)
@@ -85,7 +104,11 @@ func requestEndpoint(e string) {
 
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		panic("Invalid response status")
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+
+	if err != nil {
+		panic(err)
 	}
+
+	return resp.StatusCode, bodyBytes
 }
