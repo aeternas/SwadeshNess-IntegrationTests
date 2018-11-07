@@ -12,6 +12,7 @@ import (
 func main() {
 	var version string = fmt.Sprintf("%q", os.Getenv("VERSION"))
 	log.Println("Expected version is:", version)
+	time.Sleep(5 * time.Second)
 	i := 0
 	var actualVersion string
 	for {
