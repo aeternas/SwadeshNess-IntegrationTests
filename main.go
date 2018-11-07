@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	dto "github.com/aeternas/SwadeshNess-packages/dto"
 	languages "github.com/aeternas/SwadeshNess-packages/language"
 	"io/ioutil"
 	"log"
@@ -22,7 +23,7 @@ func main() {
 		if i >= 10 || actualVersion == version {
 			break
 		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(10 * time.Second)
 		log.Printf("Seems actual version doesn't match to expected, retrying...")
 		i++
 	}
@@ -30,7 +31,7 @@ func main() {
 		log.Fatalf("Actual version doesn't match to expected. Actual is: %v", actualVersion)
 	}
 
-	requestEndpoint("http://vpered.su/?translate=Hello+World&group=Romanic")
+	requestTranslation()
 	log.Printf("Translation OK")
 
 	requestGroups()
@@ -73,7 +74,7 @@ func requestVersion() string {
 func requestGroups() {
 	code, body := requestEndpoint("http://vpered.su/groups")
 	if code != 200 {
-		log.Fatalf("Request groups endpoint response code is not 200")
+		log.Fatalf("Groups response code is not 200")
 	}
 
 	var data []languages.LanguageGroup
@@ -84,6 +85,23 @@ func requestGroups() {
 
 	if data[0].Name != "Turkic" {
 		log.Fatalf("Group is not Turkic")
+	}
+}
+
+func requestTranslation() {
+	code, body := requestEndpoint("http://vpered.su/?translate=me&group=turkic")
+	if code != 200 {
+		log.Fatalf("Translation response code is not 200")
+	}
+
+	var data dto.SwadeshTranslation
+
+	if err := json.Unmarshal(body, &data); err != nil {
+		log.Fatalf("Error unmarshalling body")
+	}
+
+	if data.Results[0].Results[3].Translation != "bana" {
+		log.Fatalf("Result translation doesn't match expected one")
 	}
 }
 
