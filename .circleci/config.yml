@@ -1,7 +1,3 @@
-# Golang CircleCI 2.0 configuration file
-#
-# Check https://circleci.com/docs/2.0/language-go/ for more details
-
 _defaults: &defaults
   run: &getDeps go get -v -t -d ./...
 
@@ -20,11 +16,8 @@ jobs:
             git checkout $CIRCLE_SHA1
       - restore_cache:
           keys:
-          # This branch if available
           - v1-dep-{{ .Branch }}-
-          # Default branch if not
           - v1-dep-master-
-          # Any branch if there are none on the default branch - this should be unnecessary if you have your default branch configured correctly
           - v1-dep-
       - run: *getDeps
       - save_cache:
@@ -55,7 +48,6 @@ jobs:
             git checkout $CIRCLE_SHA1
       - attach_workspace:
           at: /go/src/github.com/aeternas/SwadeshNess-IntegrationTests
-      # specify any bash command here prefixed with `run: `
       - run: *getDeps
       - run: 
           name: linting
