@@ -89,7 +89,7 @@ func requestGroups() {
 }
 
 func requestTranslation() {
-	code, body := requestEndpoint("http://vpered.su:8080/dev/?translate=me&group=turkic")
+	code, body := requestEndpoint("http://vpered.su:8080/dev/?translate=Hello,+World&group=turkic")
 	if code != 200 {
 		log.Fatalf("Translation response code is not 200")
 	}
@@ -100,7 +100,7 @@ func requestTranslation() {
 		log.Fatalf("Error unmarshalling body")
 	}
 
-	if data.Results[0].Results[3].Translation != "bana" {
+	if data.Results[0].Results[3].Translation != "Merhaba Dünya" {
 		log.Fatalf("Result translation doesn't match expected one")
 	}
 }
