@@ -100,7 +100,7 @@ func requestTranslation() {
 		log.Fatalf("Error unmarshalling body")
 	}
 
-	if data.Results[0].Results[3].Translation != "Merhaba Düny" {
+	if data.Results[0].Results[3].Translation != "Merhaba Dünya" {
 		log.Fatalf("Result translation doesn't match expected one")
 	}
 }
