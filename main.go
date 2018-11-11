@@ -39,8 +39,8 @@ func main() {
 }
 
 func requestVersion() string {
-	httpClient := &http.Client{Timeout: time.Second * 15}
-	versionUrl := "http://vpered.su/version"
+	httpClient := getClient()
+	versionUrl := "https://vpered.su/version"
 
 	req, err := http.NewRequest("GET", versionUrl, nil)
 
@@ -72,7 +72,7 @@ func requestVersion() string {
 }
 
 func requestGroups() {
-	code, body := requestEndpoint("http://vpered.su/groups")
+	code, body := requestEndpoint("https://vpered.su/groups")
 	if code != 200 {
 		log.Fatalf("Groups response code is not 200")
 	}
@@ -89,7 +89,7 @@ func requestGroups() {
 }
 
 func requestTranslation() {
-	code, body := requestEndpoint("http://vpered.su/?translate=Hello,+World&group=turkic")
+	code, body := requestEndpoint("https://vpered.su/?translate=Hello,+World&group=turkic")
 	if code != 200 {
 		log.Fatalf("Translation response code is not 200")
 	}
@@ -106,13 +106,14 @@ func requestTranslation() {
 }
 
 func requestEndpoint(e string) (int, []byte) {
-	httpClient := &http.Client{Timeout: time.Second * 15}
 	url := e
 	req, err := http.NewRequest("GET", url, nil)
 
 	if err != nil {
 		panic(err)
 	}
+
+	httpClient := getClient()
 
 	resp, err := httpClient.Do(req)
 
@@ -129,4 +130,8 @@ func requestEndpoint(e string) (int, []byte) {
 	}
 
 	return resp.StatusCode, bodyBytes
+}
+
+func getClient() *http.Client {
+	return &http.Client{Timeout: time.Second * 15}
 }
