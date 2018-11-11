@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	dto "github.com/aeternas/SwadeshNess-packages/dto"
@@ -39,7 +41,7 @@ func main() {
 }
 
 func requestVersion() string {
-	httpClient := &http.Client{Timeout: time.Second * 15}
+	httpClient := getClient()
 	versionUrl := "https://vpered.su:8080/dev/version"
 
 	req, err := http.NewRequest("GET", versionUrl, nil)
@@ -106,13 +108,14 @@ func requestTranslation() {
 }
 
 func requestEndpoint(e string) (int, []byte) {
-	httpClient := &http.Client{Timeout: time.Second * 15}
 	url := e
 	req, err := http.NewRequest("GET", url, nil)
 
 	if err != nil {
 		panic(err)
 	}
+
+	httpClient := getClient()
 
 	resp, err := httpClient.Do(req)
 
@@ -129,4 +132,20 @@ func requestEndpoint(e string) (int, []byte) {
 	}
 
 	return resp.StatusCode, bodyBytes
+}
+
+func getClient() *http.Client {
+	caCert, err := ioutil.ReadFile("server.crt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(caCert)
+	return &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs: caCertPool,
+			},
+		}, Timeout: time.Second * 15,
+	}
 }
