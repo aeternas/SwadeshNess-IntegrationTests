@@ -1,19 +1,27 @@
 _defaults: &defaults
   run: &getDeps go get -v -t -d ./...
 
+_docker_worker: &docker_worker
+  - image: circleci/golang:1.11
+_workdir: &work_dir /go/src/github.com/aeternas/SwadeshNess-IntegrationTests
+
+_git_checkout: &git_checkout
+  name: Checkout
+  command: |
+    mkdir ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+    git clone --depth=50 -b $CIRCLE_BRANCH $CIRCLE_REPOSITORY_URL ./ && \
+    git checkout $CIRCLE_SHA1
+
+_attach_workspace: &attach_workspace
+  at: /go/src/github.com/aeternas/SwadeshNess-IntegrationTests
+
 version: 2
 jobs:
   checkout:
-    docker:
-      - image: circleci/golang:1.11
-    working_directory: /go/src/github.com/aeternas/SwadeshNess-IntegrationTests
+    docker: *docker_worker
+    working_directory: *work_dir
     steps:
-      - run:
-          name: Checkout
-          command: |
-            mkdir ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
-            git clone --depth=50 -b $CIRCLE_BRANCH $CIRCLE_REPOSITORY_URL ./ && \
-            git checkout $CIRCLE_SHA1
+      - run: *git_checkout
       - restore_cache:
           keys:
           - v1-dep-{{ .Branch }}-
@@ -36,40 +44,28 @@ jobs:
           paths:
             - .
   lint:
-    docker:
-      - image: circleci/golang:1.11
-    working_directory: /go/src/github.com/aeternas/SwadeshNess-IntegrationTests
+    docker: *docker_worker
+    working_directory: *work_dir
     steps:
-      - run:
-          name: Checkout
-          command: |
-            mkdir ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
-            git clone --depth=50 -b $CIRCLE_BRANCH $CIRCLE_REPOSITORY_URL ./ && \
-            git checkout $CIRCLE_SHA1
-      - attach_workspace:
-          at: /go/src/github.com/aeternas/SwadeshNess-IntegrationTests
+      - attach_workspace: *attach_workspace
       - run: *getDeps
       - run: 
           name: linting
           command: go install ./vendor/github.com/golangci/golangci-lint/cmd/golangci-lint && golangci-lint run
   test:
-    docker:
-      - image: circleci/golang:1.11
-    working_directory: /go/src/github.com/aeternas/SwadeshNess-IntegrationTests
+    docker: *docker_worker
+    working_directory: *work_dir
     steps:
-      - attach_workspace:
-          at: /go/src/github.com/aeternas/SwadeshNess-IntegrationTests
+      - attach_workspace: *attach_workspace
       - run: *getDeps
       - run:
           name: tests
           command: go test -v ./...
   deploy:
-    docker:
-      - image: circleci/golang:1.11
-    working_directory: /go/src/github.com/aeternas/SwadeshNess-IntegrationTests
+    docker: *docker_worker
+    working_directory: *work_dir
     steps:
-      - attach_workspace:
-          at: /go/src/github.com/aeternas/SwadeshNess-IntegrationTests
+      - attach_workspace: *attach_workspace
       - setup_remote_docker:
           docker_layer_caching: true
       - run:
