@@ -14,6 +14,18 @@ import (
 	"time"
 )
 
+var (
+	host string
+)
+
+func init() {
+	if branch := os.Getenv("BRANCH"); branch == "master" {
+		host = os.Getenv("PROD_HOST")
+	} else {
+		host = os.Getenv("DEV_HOST")
+	}
+}
+
 func main() {
 	var version string = fmt.Sprintf("%q", os.Getenv("VERSION"))
 	log.Println("Expected version is:", version)
@@ -42,7 +54,7 @@ func main() {
 
 func requestVersion() string {
 	httpClient := getClient()
-	versionUrl := "https://vpered.su:8080/dev/version"
+	versionUrl := fmt.Sprintf("%v/version", host)
 
 	req, err := http.NewRequest("GET", versionUrl, nil)
 
@@ -74,7 +86,8 @@ func requestVersion() string {
 }
 
 func requestGroups() {
-	code, body := requestEndpoint("https://vpered.su:8080/dev/groups")
+	endpoint := fmt.Sprintf("%v/groups", host)
+	code, body := requestEndpoint(endpoint)
 	if code != 200 {
 		log.Fatalf("Groups response code is not 200")
 	}
@@ -91,7 +104,8 @@ func requestGroups() {
 }
 
 func requestTranslation() {
-	code, body := requestEndpoint("https://vpered.su:8080/dev/?translate=Hello,+World&group=turkic")
+	endpoint := fmt.Sprintf("%v/?translate=Hello,+World&group=turkic", host)
+	code, body := requestEndpoint(endpoint)
 	if code != 200 {
 		log.Fatalf("Translation response code is not 200")
 	}
