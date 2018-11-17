@@ -1,7 +1,13 @@
 package requests
 
+import (
+	httpClient "github.com/aeternas/SwadeshNess-IntegrationTests/httpClient"
+	"io/ioutil"
+	"net/http"
+)
+
 type GetRequest interface {
-	Execute(s string) ([]byte, error)
+	Execute(s string) (int, []byte)
 }
 
 type getRequest struct {
@@ -9,10 +15,10 @@ type getRequest struct {
 }
 
 func NewGetRequest(s string) GetRequest {
-	return getRequest{Endpoint: s}
+	return &getRequest{Endpoint: s}
 }
 
-func (r *getRequest) Execute(s string) ([]byte, eror) {
+func (r *getRequest) Execute(s string) (int, []byte) {
 	url := s
 	req, err := http.NewRequest("GET", url, nil)
 
@@ -20,7 +26,7 @@ func (r *getRequest) Execute(s string) ([]byte, eror) {
 		panic(err)
 	}
 
-	httpClient := getClient()
+	httpClient := httpClient.NewHttpClient()
 
 	resp, err := httpClient.Do(req)
 
