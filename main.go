@@ -1,10 +1,9 @@
 package main
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	httpClient "github.com/aeternas/SwadeshNess-IntegrationTests/httpClient"
 	dto "github.com/aeternas/SwadeshNess-packages/dto"
 	languages "github.com/aeternas/SwadeshNess-packages/language"
 	"io/ioutil"
@@ -15,7 +14,8 @@ import (
 )
 
 var (
-	host string
+	host   string
+	client *http.Client
 )
 
 func init() {
@@ -24,6 +24,7 @@ func init() {
 	} else {
 		host = os.Getenv("DEV_HOST")
 	}
+	client = httpClient.NewHttpClient()
 }
 
 func main() {
@@ -53,7 +54,6 @@ func main() {
 }
 
 func requestVersion() string {
-	httpClient := getClient()
 	versionUrl := fmt.Sprintf("%v/version", host)
 
 	req, err := http.NewRequest("GET", versionUrl, nil)
@@ -62,7 +62,7 @@ func requestVersion() string {
 		log.Printf("Error during initializing request")
 	}
 
-	resp, err := httpClient.Do(req)
+	resp, err := client.Do(req)
 
 	if err != nil {
 		log.Printf("Error during executing request")
@@ -129,9 +129,7 @@ func requestEndpoint(e string) (int, []byte) {
 		panic(err)
 	}
 
-	httpClient := getClient()
-
-	resp, err := httpClient.Do(req)
+	resp, err := client.Do(req)
 
 	if err != nil {
 		panic(err)
@@ -146,20 +144,4 @@ func requestEndpoint(e string) (int, []byte) {
 	}
 
 	return resp.StatusCode, bodyBytes
-}
-
-func getClient() *http.Client {
-	caCert, err := ioutil.ReadFile("server.crt")
-	if err != nil {
-		log.Fatal(err)
-	}
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(caCert)
-	return &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				RootCAs: caCertPool,
-			},
-		}, Timeout: time.Second * 15,
-	}
 }
