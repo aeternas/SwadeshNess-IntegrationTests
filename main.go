@@ -54,7 +54,7 @@ func main() {
 }
 
 func requestVersion() string {
-	versionUrl := fmt.Sprintf("%v/version", host)
+	versionUrl := fmt.Sprintf("%v/v1/version", host)
 
 	req, err := http.NewRequest("GET", versionUrl, nil)
 
@@ -86,7 +86,7 @@ func requestVersion() string {
 }
 
 func requestGroups() {
-	endpoint := fmt.Sprintf("%v/groups", host)
+	endpoint := fmt.Sprintf("%v/v1/groups", host)
 	code, body := requestEndpoint(endpoint)
 	if code != 200 {
 		log.Fatalf("Groups response code is not 200")
@@ -104,7 +104,7 @@ func requestGroups() {
 }
 
 func requestTranslation() {
-	endpoint := fmt.Sprintf("%v/?translate=Hello,+World&group=turkic", host)
+	endpoint := fmt.Sprintf("%v/v1/?translate=Hello,+World&group=turkic", host)
 	code, body := requestEndpoint(endpoint)
 	if code != 200 {
 		log.Fatalf("Translation response code is not 200")
