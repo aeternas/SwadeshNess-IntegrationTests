@@ -34,7 +34,7 @@ func main() {
 	i := 0
 	var actualVersion string
 	for {
-		actualVersion = requestVersion()
+		actualVersion = requestVersionV1()
 		if i >= 10 || actualVersion == version {
 			break
 		}
@@ -46,14 +46,14 @@ func main() {
 		log.Fatalf("Actual version doesn't match to expected. Actual is: %v", actualVersion)
 	}
 
-	requestTranslation()
+	requestTranslationV1()
 	log.Printf("Translation OK")
 
-	requestGroups()
+	requestGroupsV1()
 	log.Printf("Groups OK")
 }
 
-func requestVersion() string {
+func requestVersionV1() string {
 	versionUrl := fmt.Sprintf("%v/v1/version", host)
 
 	req, err := http.NewRequest("GET", versionUrl, nil)
@@ -85,9 +85,9 @@ func requestVersion() string {
 	return bodyString
 }
 
-func requestGroups() {
+func requestGroupsV1() {
 	endpoint := fmt.Sprintf("%v/v1/groups", host)
-	code, body := requestEndpoint(endpoint)
+	code, body := requestEndpointV1(endpoint)
 	if code != 200 {
 		log.Fatalf("Groups response code is not 200")
 	}
@@ -103,9 +103,9 @@ func requestGroups() {
 	}
 }
 
-func requestTranslation() {
+func requestTranslationV1() {
 	endpoint := fmt.Sprintf("%v/v1/?translate=Hello,+World&group=turkic", host)
-	code, body := requestEndpoint(endpoint)
+	code, body := requestEndpointV1(endpoint)
 	if code != 200 {
 		log.Fatalf("Translation response code is not 200")
 	}
@@ -121,7 +121,7 @@ func requestTranslation() {
 	}
 }
 
-func requestEndpoint(e string) (int, []byte) {
+func requestEndpointV1(e string) (int, []byte) {
 	url := e
 	req, err := http.NewRequest("GET", url, nil)
 
