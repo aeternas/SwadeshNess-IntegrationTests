@@ -105,7 +105,7 @@ func requestGroupsV1() {
 
 func requestTranslationV1() {
 	endpoint := fmt.Sprintf("%v/v1/?translate=Hello,+World&group=turkic", host)
-	code, body := requestEndpoint(endpoint)
+	code, body := requestEndpointV1(endpoint)
 	if code != 200 {
 		log.Fatalf("Translation response code is not 200")
 	}
