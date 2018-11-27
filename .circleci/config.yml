@@ -12,12 +12,11 @@ aliases:
   - &attach_workspace
     at: *work_dir
   - &containerize_push_deploy
-    - run:
-      name: Containerize, Push and Deploy
-      command: |
-        docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
-        docker build -t aeternas/swadeshness-tests:$CIRCLE_BRANCH . && \
-        docker push aeternas/swadeshness-tests:$CIRCLE_BRANCH
+    name: Containerize, Push and Deploy
+    command: |
+      docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
+      docker build -t aeternas/swadeshness-tests:$CIRCLE_BRANCH . && \
+      docker push aeternas/swadeshness-tests:$CIRCLE_BRANCH
 
 version: 2
 jobs:
@@ -72,9 +71,9 @@ jobs:
       - attach_workspace: *attach_workspace
       - setup_remote_docker:
           docker_layer_caching: true
-      - *containerize_push_deploy
+      - run: *containerize_push_deploy
 
-  workflows:
+workflows:
   version: 2
   lint-test-deploy:
     jobs:
