@@ -31,7 +31,7 @@ jobs:
           - v1-dep-{{ .Branch }}-
           - v1-dep-master-
           - v1-dep-
-      - run: *getDeps
+      - run: *get_deps
       - save_cache:
          key: v1-dep-{{ .Branch }}-{{ epoch }}
          paths:
