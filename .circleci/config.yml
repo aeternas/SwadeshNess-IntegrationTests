@@ -11,6 +11,28 @@ aliases:
       git checkout $CIRCLE_SHA1
   - &attach_workspace
     at: *work_dir
+  - &save_cache
+    key: v1-dep-{{ .Branch }}-{{ epoch }}
+    paths:
+    - vendor/bundle
+    - ~/virtualenvs
+    - ~/.m2
+    - ~/.ivy2
+    - ~/.bundle
+    - ~/.go_workspace
+    - ~/.gradle
+    - ~/.cache/bower
+  - &restore_cache
+    keys:
+    - v1-dep-{{ .Branch }}-
+    - v1-dep-master-
+    - v1-dep-
+  - &lint
+    name: linting
+    command: go install ./vendor/github.com/golangci/golangci-lint/cmd/golangci-lint && golangci-lint run
+  - &test
+    name: tests
+    command: go test -v ./...
   - &containerize_push_deploy
     name: Containerize, Push and Deploy
     command: |
@@ -25,23 +47,9 @@ jobs:
     working_directory: *work_dir
     steps:
       - run: *git_checkout
-      - restore_cache:
-          keys:
-          - v1-dep-{{ .Branch }}-
-          - v1-dep-master-
-          - v1-dep-
+      - restore_cache: *restore_cache
       - run: *get_deps
-      - save_cache:
-         key: v1-dep-{{ .Branch }}-{{ epoch }}
-         paths:
-         - vendor/bundle
-         - ~/virtualenvs
-         - ~/.m2
-         - ~/.ivy2
-         - ~/.bundle
-         - ~/.go_workspace
-         - ~/.gradle
-         - ~/.cache/bower
+      - save_cache: *save_cache
       - persist_to_workspace:
           root: .
           paths:
@@ -52,18 +60,14 @@ jobs:
     steps:
       - attach_workspace: *attach_workspace
       - run: *get_deps
-      - run: 
-          name: linting
-          command: go install ./vendor/github.com/golangci/golangci-lint/cmd/golangci-lint && golangci-lint run
+      - run: *lint
   test:
     docker: *docker_worker
     working_directory: *work_dir
     steps:
       - attach_workspace: *attach_workspace
       - run: *get_deps
-      - run:
-          name: tests
-          command: go test -v ./...
+      - run: *test
   deploy:
     docker: *docker_worker
     working_directory: *work_dir
