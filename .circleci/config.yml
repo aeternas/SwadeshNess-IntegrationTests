@@ -39,7 +39,10 @@ aliases:
       docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
       docker build -t aeternas/swadeshness-tests:$CIRCLE_BRANCH . && \
       docker push aeternas/swadeshness-tests:$CIRCLE_BRANCH
-
+  - &persist_to_workspace
+      root: .
+      paths:
+        - .
 version: 2
 jobs:
   checkout:
@@ -50,10 +53,7 @@ jobs:
       - restore_cache: *restore_cache
       - run: *get_deps
       - save_cache: *save_cache
-      - persist_to_workspace:
-          root: .
-          paths:
-            - .
+      - persist_to_workspace: *persist_to_workspace
   lint:
     docker: *docker_worker
     working_directory: *work_dir
