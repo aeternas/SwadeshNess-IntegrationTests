@@ -19,8 +19,8 @@ func NewGetRequest(s string) GetRequest {
 }
 
 func (r *getRequest) Execute(s string) (int, []byte) {
-	url := s
-	req, err := http.NewRequest("GET", url, nil)
+	urlString := s
+	req, err := http.NewRequest("GET", urlString, nil)
 
 	if err != nil {
 		panic(err)
@@ -43,5 +43,4 @@ func (r *getRequest) Execute(s string) (int, []byte) {
 	}
 
 	return resp.StatusCode, bodyBytes
-
 }

@@ -24,6 +24,7 @@ func init() {
 	} else {
 		host = os.Getenv("DEV_HOST")
 	}
+
 	client = httpClient.NewHttpClient()
 }
 
@@ -42,6 +43,7 @@ func main() {
 		log.Printf("Seems actual version doesn't match to expected, retrying...")
 		i++
 	}
+
 	if version != actualVersion {
 		log.Fatalf("Actual version doesn't match to expected. Actual is: %v", actualVersion)
 	}
