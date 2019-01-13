@@ -89,6 +89,11 @@ workflows:
           requires:
             - checkout
       - deploy:
+          filters:
+            branches:
+              only:
+                - master
+                - development
           requires:
             - lint
             - test
