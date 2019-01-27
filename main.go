@@ -48,8 +48,8 @@ func main() {
 		log.Fatalf("Actual version doesn't match to expected. Actual is: %v", actualVersion)
 	}
 
-	requestTranslationV1()
-	log.Printf("Translation OK")
+	requestTranslationDeterminedV1()
+	log.Printf("Determined Translation OK")
 
 	requestGroupsV1()
 	log.Printf("Groups OK")
@@ -105,7 +105,7 @@ func requestGroupsV1() {
 	}
 }
 
-func requestTranslationV1() {
+func requestTranslationDeterminedV1() {
 	endpoint := fmt.Sprintf("%v/v1/?translate=Hello,+World&group=turkic", host)
 	code, body := requestEndpointV1(endpoint)
 	if code != 200 {
