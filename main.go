@@ -8,6 +8,7 @@ import (
 	languages "github.com/aeternas/SwadeshNess-packages/language"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"time"
@@ -50,6 +51,9 @@ func main() {
 
 	requestTranslationDeterminedV1()
 	log.Printf("Determined Translation OK")
+
+	requestTranslationRandomizedV1()
+	log.Printf("Randomized Translation OK")
 
 	requestGroupsV1()
 	log.Printf("Groups OK")
@@ -119,6 +123,27 @@ func requestTranslationDeterminedV1() {
 	}
 
 	if data.Results[0].Results[3].Translation != "Merhaba Dünya" {
+		log.Fatalf("Result translation doesn't match expected one")
+	}
+}
+
+func requestTranslationRandomizedV1() {
+	r := rand.New(rand.NewSource(99999))
+	num := r.Int31()
+	word := fmt.Sprintf("Hello,+World+%v", num)
+	endpoint := fmt.Sprintf("%v/v1/?translate=%v=turkic", host, word)
+	code, body := requestEndpointV1(endpoint)
+	if code != 200 {
+		log.Fatalf("Translation response code is not 200")
+	}
+
+	var data dto.SwadeshTranslation
+
+	if err := json.Unmarshal(body, &data); err != nil {
+		log.Fatalf("Error unmarshalling body")
+	}
+
+	if data.Results[0].Results[3].Translation != fmt.Sprintf("Merhaba Dünya %v", num) {
 		log.Fatalf("Result translation doesn't match expected one")
 	}
 }
