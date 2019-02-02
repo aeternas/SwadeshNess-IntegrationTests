@@ -19,18 +19,26 @@ var (
 	client *http.Client
 )
 
+const (
+	DEV_HOST      = "DEV_HOST"
+	PROD_HOST     = "PROD_HOST"
+	BRANCH        = "BRANCH"
+	MASTER_BRANCH = "master"
+	VERSION       = "VERSION"
+)
+
 func init() {
-	if branch := os.Getenv("BRANCH"); branch == "master" {
-		host = os.Getenv("PROD_HOST")
+	if branch := os.Getenv(BRANCH); branch == MASTER_BRANCH {
+		host = os.Getenv(PROD_HOST)
 	} else {
-		host = os.Getenv("DEV_HOST")
+		host = os.Getenv(DEV_HOST)
 	}
 
 	client = httpClient.NewHttpClient()
 }
 
 func main() {
-	var version string = fmt.Sprintf("%q", os.Getenv("VERSION"))
+	var version string = fmt.Sprintf("%q", os.Getenv(VERSION))
 	log.Println("Expected version is:", version)
 	time.Sleep(5 * time.Second)
 	i := 0
@@ -62,7 +70,7 @@ func main() {
 func requestVersionV1() string {
 	versionUrl := fmt.Sprintf("%v/v1/version", host)
 
-	req, err := http.NewRequest("GET", versionUrl, nil)
+	req, err := http.NewRequest(http.MethodGet, versionUrl, nil)
 
 	if err != nil {
 		log.Printf("Error during initializing request")
@@ -76,7 +84,7 @@ func requestVersionV1() string {
 
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return string(resp.StatusCode)
 	}
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
@@ -94,7 +102,7 @@ func requestVersionV1() string {
 func requestGroupsV1() {
 	endpoint := fmt.Sprintf("%v/v1/groups", host)
 	code, body := requestEndpointV1(endpoint)
-	if code != 200 {
+	if code != http.StatusOK {
 		log.Fatalf("Groups response code is not 200")
 	}
 
@@ -112,7 +120,7 @@ func requestGroupsV1() {
 func requestTranslationDeterminedV1() {
 	endpoint := fmt.Sprintf("%v/v1/?translate=Hello,+World&group=turkic", host)
 	code, body := requestEndpointV1(endpoint)
-	if code != 200 {
+	if code != http.StatusOK {
 		log.Fatalf("Translation response code is not 200")
 	}
 
@@ -133,7 +141,7 @@ func requestTranslationRandomizedV1() {
 	word := fmt.Sprintf("Hello,+World+%v", num)
 	endpoint := fmt.Sprintf("%v/v1/?translate=%v&group=turkic", host, word)
 	code, body := requestEndpointV1(endpoint)
-	if code != 200 {
+	if code != http.StatusOK {
 		log.Fatalf("Translation response code is not 200")
 	}
 
@@ -150,7 +158,7 @@ func requestTranslationRandomizedV1() {
 
 func requestEndpointV1(e string) (int, []byte) {
 	url := e
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 
 	if err != nil {
 		panic(err)
