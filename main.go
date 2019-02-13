@@ -46,6 +46,7 @@ func main() {
 	for {
 		actualVersion = requestVersionV1()
 		if i >= 10 || actualVersion == version {
+			log.Printf("Version matches, OK")
 			break
 		}
 		time.Sleep(10 * time.Second)
