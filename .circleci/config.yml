@@ -43,7 +43,7 @@ aliases:
       root: .
       paths:
         - .
-version: 2
+version: 2.1
 jobs:
   checkout:
     docker: *docker_worker
@@ -78,7 +78,7 @@ jobs:
       - run: *containerize_push_deploy
 
 workflows:
-  version: 2
+  version: 2.1
   lint-test-deploy:
     jobs:
       - checkout
