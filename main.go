@@ -71,6 +71,8 @@ func main() {
 func requestVersionV1() string {
 	versionUrl := fmt.Sprintf("%v/v1/version", host)
 
+	log.Println("versionUrl is", versionUrl)
+
 	req, err := http.NewRequest(http.MethodGet, versionUrl, nil)
 
 	if err != nil {
