@@ -76,13 +76,13 @@ func requestVersionV1() string {
 	req, err := http.NewRequest(http.MethodGet, versionUrl, nil)
 
 	if err != nil {
-		log.Printf("Error during initializing request")
+		log.Println("Error during initializing request", err)
 	}
 
 	resp, err := client.Do(req)
 
 	if err != nil {
-		log.Printf("Error during executing request")
+		log.Println("Error during executing request", err)
 	}
 
 	defer resp.Body.Close()
