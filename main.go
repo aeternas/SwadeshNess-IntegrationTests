@@ -76,13 +76,13 @@ func requestVersionV1() string {
 	req, err := http.NewRequest(http.MethodGet, versionUrl, nil)
 
 	if err != nil {
-		log.Println("Error during initializing request", err)
+		log.Fatalln("Error during initializing request", err)
 	}
 
 	resp, err := client.Do(req)
 
 	if err != nil {
-		log.Println("Error during executing request", err)
+		log.Fatalln("Error during executing request", err)
 	}
 
 	defer resp.Body.Close()
@@ -93,8 +93,7 @@ func requestVersionV1() string {
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
 
 	if err != nil {
-		log.Printf("Error during unmarshalling, trying to repeat")
-		return "Error!"
+		log.Fatalln("Error during unmarshalling, trying to repeat")
 	}
 
 	bodyString := string(bodyBytes)
