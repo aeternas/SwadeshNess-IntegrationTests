@@ -73,7 +73,7 @@ func requestVersionV1() string {
 
 	log.Println("versionUrl is", versionUrl)
 
-	req, err := http.NewRequest("GET", versionUrl, nil)
+	req, err := http.NewRequest(http.MethodGet, versionUrl, nil)
 
 	if err != nil {
 		log.Fatalln("Error during initializing request", err)
