@@ -40,7 +40,9 @@ func init() {
 func main() {
 	var version string = fmt.Sprintf("%q", os.Getenv(VERSION))
 	log.Println("Expected version is:", version)
+	log.Print("Sleeping to ensure app is deployed...")
 	time.Sleep(5 * time.Second)
+	log.Print("Woke!")
 	i := 0
 	var actualVersion string
 	for {
@@ -159,8 +161,7 @@ func requestTranslationRandomizedV1() {
 }
 
 func requestEndpointV1(e string) (int, []byte) {
-	url := e
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequest(http.MethodGet, e, nil)
 
 	if err != nil {
 		panic(err)
