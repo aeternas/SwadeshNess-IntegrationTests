@@ -33,6 +33,9 @@ aliases:
   - &test
     name: tests
     command: go test -v ./...
+  - &setup_remote_docker
+    setup_remote_docker:
+      docker_layer_caching: true
   - &containerize_push_deploy
     name: Containerize, Push and Deploy
     command: |
@@ -73,8 +76,7 @@ jobs:
     working_directory: *work_dir
     steps:
       - attach_workspace: *attach_workspace
-      - setup_remote_docker:
-          docker_layer_caching: true
+      - *setup_remote_docker
       - run: *containerize_push_deploy
 
 workflows:
