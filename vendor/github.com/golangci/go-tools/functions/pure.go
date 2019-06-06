@@ -4,9 +4,9 @@ import (
 	"go/token"
 	"go/types"
 
-	"github.com/golangci/go-tools/callgraph"
-	"github.com/golangci/go-tools/lint/lintdsl"
-	"github.com/golangci/go-tools/ssa"
+	"github.com/golangci/tools/go/callgraph"
+	"github.com/golangci/tools/go/ssa"
+	"github.com/golangci/go-tools/lint"
 )
 
 // IsStub reports whether a function is a stub. A function is
@@ -20,7 +20,7 @@ func (d *Descriptions) IsStub(fn *ssa.Function) bool {
 	if len(fn.Blocks) > 1 {
 		return false
 	}
-	instrs := lintdsl.FilterDebug(fn.Blocks[0].Instrs)
+	instrs := lint.FilterDebug(fn.Blocks[0].Instrs)
 	if len(instrs) != 1 {
 		return false
 	}

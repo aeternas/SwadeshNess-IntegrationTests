@@ -42,7 +42,7 @@ func (p Cgo) Process(issues []result.Issue) ([]result.Issue, error) {
 			issueFilePath = absPath
 		}
 
-		if p.goCacheDir != "" && strings.HasPrefix(issueFilePath, p.goCacheDir) {
+		if strings.HasPrefix(issueFilePath, p.goCacheDir) {
 			return false, nil
 		}
 

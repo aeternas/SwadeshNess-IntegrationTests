@@ -10,25 +10,20 @@ import (
 	htmltemplate "html/template"
 	"net/http"
 	"regexp"
-	"regexp/syntax"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	texttemplate "text/template"
 
-	. "github.com/golangci/go-tools/arg"
 	"github.com/golangci/go-tools/deprecated"
 	"github.com/golangci/go-tools/functions"
 	"github.com/golangci/go-tools/internal/sharedcheck"
 	"github.com/golangci/go-tools/lint"
-	. "github.com/golangci/go-tools/lint/lintdsl"
-	"github.com/golangci/go-tools/ssa"
-	"github.com/golangci/go-tools/ssautil"
+	"github.com/golangci/tools/go/ssa"
 	"github.com/golangci/go-tools/staticcheck/vrp"
 
 	"golang.org/x/tools/go/ast/astutil"
-	"golang.org/x/tools/go/packages"
 )
 
 func validRegexp(call *Call) {
@@ -69,7 +64,7 @@ func unmarshalPointer(name string, arg int) CallCheck {
 
 func pointlessIntMath(call *Call) {
 	if ConvertedFromInt(call.Args[0].Value) {
-		call.Invalid(fmt.Sprintf("calling %s on a converted integer is pointless", CallName(call.Instr.Common())))
+		call.Invalid(fmt.Sprintf("calling %s on a converted integer is pointless", lint.CallName(call.Instr.Common())))
 	}
 }
 
@@ -85,14 +80,11 @@ var (
 	checkRegexpRules = map[string]CallCheck{
 		"regexp.MustCompile": validRegexp,
 		"regexp.Compile":     validRegexp,
-		"regexp.Match":       validRegexp,
-		"regexp.MatchReader": validRegexp,
-		"regexp.MatchString": validRegexp,
 	}
 
 	checkTimeParseRules = map[string]CallCheck{
 		"time.Parse": func(call *Call) {
-			arg := call.Args[Arg("time.Parse.layout")]
+			arg := call.Args[0]
 			err := ValidateTimeLayout(arg.Value)
 			if err != nil {
 				arg.Invalid(err.Error())
@@ -102,7 +94,7 @@ var (
 
 	checkEncodingBinaryRules = map[string]CallCheck{
 		"encoding/binary.Write": func(call *Call) {
-			arg := call.Args[Arg("encoding/binary.Write.data")]
+			arg := call.Args[2]
 			if !CanBinaryMarshal(call.Job, arg.Value) {
 				arg.Invalid(fmt.Sprintf("value of type %s cannot be used with binary.Write", arg.Value.Value.Type()))
 			}
@@ -111,7 +103,7 @@ var (
 
 	checkURLsRules = map[string]CallCheck{
 		"net/url.Parse": func(call *Call) {
-			arg := call.Args[Arg("net/url.Parse.rawurl")]
+			arg := call.Args[0]
 			err := ValidateURL(arg.Value)
 			if err != nil {
 				arg.Invalid(err.Error())
@@ -121,9 +113,9 @@ var (
 
 	checkSyncPoolValueRules = map[string]CallCheck{
 		"(*sync.Pool).Put": func(call *Call) {
-			arg := call.Args[Arg("(*sync.Pool).Put.x")]
+			arg := call.Args[0]
 			typ := arg.Value.Value.Type()
-			if !IsPointerLike(typ) {
+			if !lint.IsPointerLike(typ) {
 				arg.Invalid("argument should be pointer-like to avoid allocations")
 			}
 		},
@@ -165,7 +157,7 @@ var (
 
 	checkUnbufferedSignalChanRules = map[string]CallCheck{
 		"os/signal.Notify": func(call *Call) {
-			arg := call.Args[Arg("os/signal.Notify.c")]
+			arg := call.Args[0]
 			if UnbufferedChannel(arg.Value) {
 				arg.Invalid("the channel used with signal.Notify should be buffered")
 			}
@@ -192,8 +184,7 @@ var (
 
 	checkBytesEqualIPRules = map[string]CallCheck{
 		"bytes.Equal": func(call *Call) {
-			if ConvertedFrom(call.Args[Arg("bytes.Equal.a")].Value, "net.IP") &&
-				ConvertedFrom(call.Args[Arg("bytes.Equal.b")].Value, "net.IP") {
+			if ConvertedFrom(call.Args[0].Value, "net.IP") && ConvertedFrom(call.Args[1].Value, "net.IP") {
 				call.Invalid("use net.IP.Equal to compare net.IPs, not bytes.Equal")
 			}
 		},
@@ -210,6 +201,7 @@ type Checker struct {
 	CheckGenerated bool
 	funcDescs      *functions.Descriptions
 	deprecatedObjs map[types.Object]string
+	nodeFns        map[ast.Node]*ssa.Function
 }
 
 func NewChecker() *Checker {
@@ -219,175 +211,118 @@ func NewChecker() *Checker {
 func (*Checker) Name() string   { return "staticcheck" }
 func (*Checker) Prefix() string { return "SA" }
 
-func (c *Checker) Checks() []lint.Check {
-	return []lint.Check{
-		{ID: "SA1000", FilterGenerated: false, Fn: c.callChecker(checkRegexpRules)},
-		{ID: "SA1001", FilterGenerated: false, Fn: c.CheckTemplate},
-		{ID: "SA1002", FilterGenerated: false, Fn: c.callChecker(checkTimeParseRules)},
-		{ID: "SA1003", FilterGenerated: false, Fn: c.callChecker(checkEncodingBinaryRules)},
-		{ID: "SA1004", FilterGenerated: false, Fn: c.CheckTimeSleepConstant},
-		{ID: "SA1005", FilterGenerated: false, Fn: c.CheckExec},
-		{ID: "SA1006", FilterGenerated: false, Fn: c.CheckUnsafePrintf},
-		{ID: "SA1007", FilterGenerated: false, Fn: c.callChecker(checkURLsRules)},
-		{ID: "SA1008", FilterGenerated: false, Fn: c.CheckCanonicalHeaderKey},
-		{ID: "SA1010", FilterGenerated: false, Fn: c.callChecker(checkRegexpFindAllRules)},
-		{ID: "SA1011", FilterGenerated: false, Fn: c.callChecker(checkUTF8CutsetRules)},
-		{ID: "SA1012", FilterGenerated: false, Fn: c.CheckNilContext},
-		{ID: "SA1013", FilterGenerated: false, Fn: c.CheckSeeker},
-		{ID: "SA1014", FilterGenerated: false, Fn: c.callChecker(checkUnmarshalPointerRules)},
-		{ID: "SA1015", FilterGenerated: false, Fn: c.CheckLeakyTimeTick},
-		{ID: "SA1016", FilterGenerated: false, Fn: c.CheckUntrappableSignal},
-		{ID: "SA1017", FilterGenerated: false, Fn: c.callChecker(checkUnbufferedSignalChanRules)},
-		{ID: "SA1018", FilterGenerated: false, Fn: c.callChecker(checkStringsReplaceZeroRules)},
-		{ID: "SA1019", FilterGenerated: false, Fn: c.CheckDeprecated},
-		{ID: "SA1020", FilterGenerated: false, Fn: c.callChecker(checkListenAddressRules)},
-		{ID: "SA1021", FilterGenerated: false, Fn: c.callChecker(checkBytesEqualIPRules)},
-		{ID: "SA1023", FilterGenerated: false, Fn: c.CheckWriterBufferModified},
-		{ID: "SA1024", FilterGenerated: false, Fn: c.callChecker(checkUniqueCutsetRules)},
-		{ID: "SA1025", FilterGenerated: false, Fn: c.CheckTimerResetReturnValue},
+func (c *Checker) Funcs() map[string]lint.Func {
+	return map[string]lint.Func{
+		"SA1000": c.callChecker(checkRegexpRules),
+		"SA1001": c.CheckTemplate,
+		"SA1002": c.callChecker(checkTimeParseRules),
+		"SA1003": c.callChecker(checkEncodingBinaryRules),
+		"SA1004": c.CheckTimeSleepConstant,
+		"SA1005": c.CheckExec,
+		"SA1006": c.CheckUnsafePrintf,
+		"SA1007": c.callChecker(checkURLsRules),
+		"SA1008": c.CheckCanonicalHeaderKey,
+		"SA1009": nil,
+		"SA1010": c.callChecker(checkRegexpFindAllRules),
+		"SA1011": c.callChecker(checkUTF8CutsetRules),
+		"SA1012": c.CheckNilContext,
+		"SA1013": c.CheckSeeker,
+		"SA1014": c.callChecker(checkUnmarshalPointerRules),
+		"SA1015": c.CheckLeakyTimeTick,
+		"SA1016": c.CheckUntrappableSignal,
+		"SA1017": c.callChecker(checkUnbufferedSignalChanRules),
+		"SA1018": c.callChecker(checkStringsReplaceZeroRules),
+		"SA1019": c.CheckDeprecated,
+		"SA1020": c.callChecker(checkListenAddressRules),
+		"SA1021": c.callChecker(checkBytesEqualIPRules),
+		"SA1022": nil,
+		"SA1023": c.CheckWriterBufferModified,
+		"SA1024": c.callChecker(checkUniqueCutsetRules),
 
-		{ID: "SA2000", FilterGenerated: false, Fn: c.CheckWaitgroupAdd},
-		{ID: "SA2001", FilterGenerated: false, Fn: c.CheckEmptyCriticalSection},
-		{ID: "SA2002", FilterGenerated: false, Fn: c.CheckConcurrentTesting},
-		{ID: "SA2003", FilterGenerated: false, Fn: c.CheckDeferLock},
+		"SA2000": c.CheckWaitgroupAdd,
+		"SA2001": c.CheckEmptyCriticalSection,
+		"SA2002": c.CheckConcurrentTesting,
+		"SA2003": c.CheckDeferLock,
 
-		{ID: "SA3000", FilterGenerated: false, Fn: c.CheckTestMainExit},
-		{ID: "SA3001", FilterGenerated: false, Fn: c.CheckBenchmarkN},
+		"SA3000": c.CheckTestMainExit,
+		"SA3001": c.CheckBenchmarkN,
 
-		{ID: "SA4000", FilterGenerated: false, Fn: c.CheckLhsRhsIdentical},
-		{ID: "SA4001", FilterGenerated: false, Fn: c.CheckIneffectiveCopy},
-		{ID: "SA4002", FilterGenerated: false, Fn: c.CheckDiffSizeComparison},
-		{ID: "SA4003", FilterGenerated: false, Fn: c.CheckExtremeComparison},
-		{ID: "SA4004", FilterGenerated: false, Fn: c.CheckIneffectiveLoop},
-		{ID: "SA4006", FilterGenerated: false, Fn: c.CheckUnreadVariableValues},
-		{ID: "SA4008", FilterGenerated: false, Fn: c.CheckLoopCondition},
-		{ID: "SA4009", FilterGenerated: false, Fn: c.CheckArgOverwritten},
-		{ID: "SA4010", FilterGenerated: false, Fn: c.CheckIneffectiveAppend},
-		{ID: "SA4011", FilterGenerated: false, Fn: c.CheckScopedBreak},
-		{ID: "SA4012", FilterGenerated: false, Fn: c.CheckNaNComparison},
-		{ID: "SA4013", FilterGenerated: false, Fn: c.CheckDoubleNegation},
-		{ID: "SA4014", FilterGenerated: false, Fn: c.CheckRepeatedIfElse},
-		{ID: "SA4015", FilterGenerated: false, Fn: c.callChecker(checkMathIntRules)},
-		{ID: "SA4016", FilterGenerated: false, Fn: c.CheckSillyBitwiseOps},
-		{ID: "SA4017", FilterGenerated: false, Fn: c.CheckPureFunctions},
-		{ID: "SA4018", FilterGenerated: true, Fn: c.CheckSelfAssignment},
-		{ID: "SA4019", FilterGenerated: true, Fn: c.CheckDuplicateBuildConstraints},
-		{ID: "SA4020", FilterGenerated: false, Fn: c.CheckUnreachableTypeCases},
+		"SA4000": c.CheckLhsRhsIdentical,
+		"SA4001": c.CheckIneffectiveCopy,
+		"SA4002": c.CheckDiffSizeComparison,
+		"SA4003": c.CheckUnsignedComparison,
+		"SA4004": c.CheckIneffectiveLoop,
+		"SA4005": nil,
+		"SA4006": c.CheckUnreadVariableValues,
+		// "SA4007": c.CheckPredeterminedBooleanExprs,
+		"SA4007": nil,
+		"SA4008": c.CheckLoopCondition,
+		"SA4009": c.CheckArgOverwritten,
+		"SA4010": c.CheckIneffectiveAppend,
+		"SA4011": c.CheckScopedBreak,
+		"SA4012": c.CheckNaNComparison,
+		"SA4013": c.CheckDoubleNegation,
+		"SA4014": c.CheckRepeatedIfElse,
+		"SA4015": c.callChecker(checkMathIntRules),
+		"SA4016": c.CheckSillyBitwiseOps,
+		"SA4017": c.CheckPureFunctions,
+		"SA4018": c.CheckSelfAssignment,
+		"SA4019": c.CheckDuplicateBuildConstraints,
 
-		{ID: "SA5000", FilterGenerated: false, Fn: c.CheckNilMaps},
-		{ID: "SA5001", FilterGenerated: false, Fn: c.CheckEarlyDefer},
-		{ID: "SA5002", FilterGenerated: false, Fn: c.CheckInfiniteEmptyLoop},
-		{ID: "SA5003", FilterGenerated: false, Fn: c.CheckDeferInInfiniteLoop},
-		{ID: "SA5004", FilterGenerated: false, Fn: c.CheckLoopEmptyDefault},
-		{ID: "SA5005", FilterGenerated: false, Fn: c.CheckCyclicFinalizer},
-		{ID: "SA5007", FilterGenerated: false, Fn: c.CheckInfiniteRecursion},
+		"SA5000": c.CheckNilMaps,
+		"SA5001": c.CheckEarlyDefer,
+		"SA5002": c.CheckInfiniteEmptyLoop,
+		"SA5003": c.CheckDeferInInfiniteLoop,
+		"SA5004": c.CheckLoopEmptyDefault,
+		"SA5005": c.CheckCyclicFinalizer,
+		// "SA5006": c.CheckSliceOutOfBounds,
+		"SA5007": c.CheckInfiniteRecursion,
 
-		{ID: "SA6000", FilterGenerated: false, Fn: c.callChecker(checkRegexpMatchLoopRules)},
-		{ID: "SA6001", FilterGenerated: false, Fn: c.CheckMapBytesKey},
-		{ID: "SA6002", FilterGenerated: false, Fn: c.callChecker(checkSyncPoolValueRules)},
-		{ID: "SA6003", FilterGenerated: false, Fn: c.CheckRangeStringRunes},
-		// {ID: "SA6004", FilterGenerated: false, Fn: c.CheckSillyRegexp},
-		{ID: "SA6005", FilterGenerated: false, Fn: c.CheckToLowerToUpperComparison},
+		"SA6000": c.callChecker(checkRegexpMatchLoopRules),
+		"SA6001": c.CheckMapBytesKey,
+		"SA6002": c.callChecker(checkSyncPoolValueRules),
+		"SA6003": c.CheckRangeStringRunes,
+		"SA6004": nil,
 
-		{ID: "SA9001", FilterGenerated: false, Fn: c.CheckDubiousDeferInChannelRangeLoop},
-		{ID: "SA9002", FilterGenerated: false, Fn: c.CheckNonOctalFileMode},
-		{ID: "SA9003", FilterGenerated: false, Fn: c.CheckEmptyBranch},
-		{ID: "SA9004", FilterGenerated: false, Fn: c.CheckMissingEnumTypesInDeclaration},
+		"SA9000": nil,
+		"SA9001": c.CheckDubiousDeferInChannelRangeLoop,
+		"SA9002": c.CheckNonOctalFileMode,
+		"SA9003": c.CheckEmptyBranch,
+		"SA9004": c.CheckMissingEnumTypesInDeclaration,
 	}
-
-	// "SA5006": c.CheckSliceOutOfBounds,
-	// "SA4007": c.CheckPredeterminedBooleanExprs,
 }
 
-func (c *Checker) findDeprecated(prog *lint.Program) {
-	var docs []*ast.CommentGroup
-	var names []*ast.Ident
-
-	doDocs := func(pkg *packages.Package, names []*ast.Ident, docs []*ast.CommentGroup) {
-		var alt string
-		for _, doc := range docs {
-			if doc == nil {
-				continue
-			}
-			parts := strings.Split(doc.Text(), "\n\n")
-			last := parts[len(parts)-1]
-			if !strings.HasPrefix(last, "Deprecated: ") {
-				continue
-			}
-			alt = last[len("Deprecated: "):]
-			alt = strings.Replace(alt, "\n", " ", -1)
-			break
-		}
-		if alt == "" {
-			return
-		}
-
-		for _, name := range names {
-			obj := pkg.TypesInfo.ObjectOf(name)
-			c.deprecatedObjs[obj] = alt
+func (c *Checker) filterGenerated(files []*ast.File) []*ast.File {
+	if c.CheckGenerated {
+		return files
+	}
+	var out []*ast.File
+	for _, f := range files {
+		if !lint.IsGenerated(f) {
+			out = append(out, f)
 		}
 	}
+	return out
+}
 
-	for _, pkg := range prog.AllPackages {
-		for _, f := range pkg.Syntax {
-			fn := func(node ast.Node) bool {
-				if node == nil {
-					return true
-				}
-				var ret bool
-				switch node := node.(type) {
-				case *ast.GenDecl:
-					switch node.Tok {
-					case token.TYPE, token.CONST, token.VAR:
-						docs = append(docs, node.Doc)
-						return true
-					default:
-						return false
-					}
-				case *ast.FuncDecl:
-					docs = append(docs, node.Doc)
-					names = []*ast.Ident{node.Name}
-					ret = false
-				case *ast.TypeSpec:
-					docs = append(docs, node.Doc)
-					names = []*ast.Ident{node.Name}
-					ret = true
-				case *ast.ValueSpec:
-					docs = append(docs, node.Doc)
-					names = node.Names
-					ret = false
-				case *ast.File:
-					return true
-				case *ast.StructType:
-					for _, field := range node.Fields.List {
-						doDocs(pkg, field.Names, []*ast.CommentGroup{field.Doc})
-					}
-					return false
-				case *ast.InterfaceType:
-					for _, field := range node.Methods.List {
-						doDocs(pkg, field.Names, []*ast.CommentGroup{field.Doc})
-					}
-					return false
-				default:
-					return false
-				}
-				if len(names) == 0 || len(docs) == 0 {
-					return ret
-				}
-				doDocs(pkg, names, docs)
+func (c *Checker) deprecateObject(m map[types.Object]string, prog *lint.Program, obj types.Object) {
+	if obj.Pkg() == nil {
+		return
+	}
 
-				docs = docs[:0]
-				names = nil
-				return ret
-			}
-			ast.Inspect(f, fn)
-		}
+	f := prog.File(obj)
+	if f == nil {
+		return
+	}
+	msg := c.deprecationMessage(f, prog.Prog.Fset, obj)
+	if msg != "" {
+		m[obj] = msg
 	}
 }
 
 func (c *Checker) Init(prog *lint.Program) {
 	wg := &sync.WaitGroup{}
-	wg.Add(2)
+	wg.Add(3)
 	go func() {
 		c.funcDescs = functions.NewDescriptions(prog.SSA)
 		for _, fn := range prog.AllFunctions {
@@ -400,12 +335,94 @@ func (c *Checker) Init(prog *lint.Program) {
 	}()
 
 	go func() {
+		c.nodeFns = lint.NodeFns(prog.Packages)
+		wg.Done()
+	}()
+
+	go func() {
 		c.deprecatedObjs = map[types.Object]string{}
-		c.findDeprecated(prog)
+		for _, ssapkg := range prog.SSA.AllPackages() {
+			ssapkg := ssapkg
+			for _, member := range ssapkg.Members {
+				obj := member.Object()
+				if obj == nil {
+					continue
+				}
+				c.deprecateObject(c.deprecatedObjs, prog, obj)
+				if typ, ok := obj.Type().(*types.Named); ok {
+					for i := 0; i < typ.NumMethods(); i++ {
+						meth := typ.Method(i)
+						c.deprecateObject(c.deprecatedObjs, prog, meth)
+					}
+
+					if iface, ok := typ.Underlying().(*types.Interface); ok {
+						for i := 0; i < iface.NumExplicitMethods(); i++ {
+							meth := iface.ExplicitMethod(i)
+							c.deprecateObject(c.deprecatedObjs, prog, meth)
+						}
+					}
+				}
+				if typ, ok := obj.Type().Underlying().(*types.Struct); ok {
+					n := typ.NumFields()
+					for i := 0; i < n; i++ {
+						// FIXME(dh): This code will not find deprecated
+						// fields in anonymous structs.
+						field := typ.Field(i)
+						c.deprecateObject(c.deprecatedObjs, prog, field)
+					}
+				}
+			}
+		}
 		wg.Done()
 	}()
 
 	wg.Wait()
+}
+
+func (c *Checker) deprecationMessage(file *ast.File, fset *token.FileSet, obj types.Object) (message string) {
+	pos := obj.Pos()
+	path, _ := astutil.PathEnclosingInterval(file, pos, pos)
+	if len(path) <= 2 {
+		return ""
+	}
+	var docs []*ast.CommentGroup
+	switch n := path[1].(type) {
+	case *ast.FuncDecl:
+		docs = append(docs, n.Doc)
+	case *ast.Field:
+		docs = append(docs, n.Doc)
+	case *ast.ValueSpec:
+		docs = append(docs, n.Doc)
+		if len(path) >= 3 {
+			if n, ok := path[2].(*ast.GenDecl); ok {
+				docs = append(docs, n.Doc)
+			}
+		}
+	case *ast.TypeSpec:
+		docs = append(docs, n.Doc)
+		if len(path) >= 3 {
+			if n, ok := path[2].(*ast.GenDecl); ok {
+				docs = append(docs, n.Doc)
+			}
+		}
+	default:
+		return ""
+	}
+
+	for _, doc := range docs {
+		if doc == nil {
+			continue
+		}
+		parts := strings.Split(doc.Text(), "\n\n")
+		last := parts[len(parts)-1]
+		if !strings.HasPrefix(last, "Deprecated: ") {
+			continue
+		}
+		alt := last[len("Deprecated: "):]
+		alt = strings.Replace(alt, "\n", " ", -1)
+		return alt
+	}
+	return ""
 }
 
 func (c *Checker) isInLoop(b *ssa.BasicBlock) bool {
@@ -452,7 +469,7 @@ func applyStdlibKnowledge(fn *ssa.Function) {
 			if !ok {
 				continue
 			}
-			if !IsCallTo(call.Common(), "time.Tick") {
+			if !lint.IsCallTo(call.Common(), "time.Tick") {
 				continue
 			}
 			ex, ok := (*instrs[i+1]).(*ssa.Extract)
@@ -474,8 +491,7 @@ func applyStdlibKnowledge(fn *ssa.Function) {
 }
 
 func hasType(j *lint.Job, expr ast.Expr, name string) bool {
-	T := TypeOf(j, expr)
-	return IsType(T, name)
+	return types.TypeString(j.Program.Info.TypeOf(expr), nil) == name
 }
 
 func (c *Checker) CheckUntrappableSignal(j *lint.Job) {
@@ -484,7 +500,7 @@ func (c *Checker) CheckUntrappableSignal(j *lint.Job) {
 		if !ok {
 			return true
 		}
-		if !IsCallToAnyAST(j, call,
+		if !j.IsCallToAnyAST(call,
 			"os/signal.Ignore", "os/signal.Notify", "os/signal.Reset") {
 			return true
 		}
@@ -494,10 +510,10 @@ func (c *Checker) CheckUntrappableSignal(j *lint.Job) {
 			}
 
 			if isName(j, arg, "os.Kill") || isName(j, arg, "syscall.SIGKILL") {
-				j.Errorf(arg, "%s cannot be trapped (did you mean syscall.SIGTERM?)", Render(j, arg))
+				j.Errorf(arg, "%s cannot be trapped (did you mean syscall.SIGTERM?)", j.Render(arg))
 			}
 			if isName(j, arg, "syscall.SIGSTOP") {
-				j.Errorf(arg, "%s signal cannot be trapped", Render(j, arg))
+				j.Errorf(arg, "%s signal cannot be trapped", j.Render(arg))
 			}
 		}
 		return true
@@ -514,23 +530,23 @@ func (c *Checker) CheckTemplate(j *lint.Job) {
 			return true
 		}
 		var kind string
-		if IsCallToAST(j, call, "(*text/template.Template).Parse") {
+		if j.IsCallToAST(call, "(*text/template.Template).Parse") {
 			kind = "text"
-		} else if IsCallToAST(j, call, "(*html/template.Template).Parse") {
+		} else if j.IsCallToAST(call, "(*html/template.Template).Parse") {
 			kind = "html"
 		} else {
 			return true
 		}
 		sel := call.Fun.(*ast.SelectorExpr)
-		if !IsCallToAST(j, sel.X, "text/template.New") &&
-			!IsCallToAST(j, sel.X, "html/template.New") {
+		if !j.IsCallToAST(sel.X, "text/template.New") &&
+			!j.IsCallToAST(sel.X, "html/template.New") {
 			// TODO(dh): this is a cheap workaround for templates with
 			// different delims. A better solution with less false
 			// negatives would use data flow analysis to see where the
 			// template comes from and where it has been
 			return true
 		}
-		s, ok := ExprToString(j, call.Args[Arg("(*text/template.Template).Parse.text")])
+		s, ok := j.ExprToString(call.Args[0])
 		if !ok {
 			return true
 		}
@@ -544,7 +560,7 @@ func (c *Checker) CheckTemplate(j *lint.Job) {
 		if err != nil {
 			// TODO(dominikh): whitelist other parse errors, if any
 			if strings.Contains(err.Error(), "unexpected") {
-				j.Errorf(call.Args[Arg("(*text/template.Template).Parse.text")], "%s", err)
+				j.Errorf(call.Args[0], "%s", err)
 			}
 		}
 		return true
@@ -560,10 +576,10 @@ func (c *Checker) CheckTimeSleepConstant(j *lint.Job) {
 		if !ok {
 			return true
 		}
-		if !IsCallToAST(j, call, "time.Sleep") {
+		if !j.IsCallToAST(call, "time.Sleep") {
 			return true
 		}
-		lit, ok := call.Args[Arg("time.Sleep.d")].(*ast.BasicLit)
+		lit, ok := call.Args[0].(*ast.BasicLit)
 		if !ok {
 			return true
 		}
@@ -581,8 +597,7 @@ func (c *Checker) CheckTimeSleepConstant(j *lint.Job) {
 		if n != 1 {
 			recommendation = fmt.Sprintf("time.Sleep(%d * time.Nanosecond)", n)
 		}
-		j.Errorf(call.Args[Arg("time.Sleep.d")],
-			"sleeping for %d nanoseconds is probably a bug. Be explicit if it isn't: %s", n, recommendation)
+		j.Errorf(call.Args[0], "sleeping for %d nanoseconds is probably a bug. Be explicit if it isn't: %s", n, recommendation)
 		return true
 	}
 	for _, f := range j.Program.Files {
@@ -615,13 +630,13 @@ func (c *Checker) CheckWaitgroupAdd(j *lint.Job) {
 		if !ok {
 			return true
 		}
-		fn, ok := ObjectOf(j, sel.Sel).(*types.Func)
+		fn, ok := j.Program.Info.ObjectOf(sel.Sel).(*types.Func)
 		if !ok {
 			return true
 		}
 		if fn.FullName() == "(*sync.WaitGroup).Add" {
 			j.Errorf(sel, "should call %s before starting the goroutine to avoid a race",
-				Render(j, stmt))
+				j.Render(stmt))
 		}
 		return true
 	}
@@ -654,21 +669,14 @@ func (c *Checker) CheckInfiniteEmptyLoop(j *lint.Job) {
 		// is dynamic and the loop might terminate. Similarly for
 		// channel receives.
 
+		if loop.Cond != nil && hasSideEffects(loop.Cond) {
+			return true
+		}
+
+		j.Errorf(loop, "this loop will spin, using 100%% CPU")
 		if loop.Cond != nil {
-			if hasSideEffects(loop.Cond) {
-				return true
-			}
-			if ident, ok := loop.Cond.(*ast.Ident); ok {
-				if k, ok := ObjectOf(j, ident).(*types.Const); ok {
-					if !constant.BoolVal(k.Val()) {
-						// don't flag `for false {}` loops. They're a debug aid.
-						return true
-					}
-				}
-			}
 			j.Errorf(loop, "loop condition never changes or has a race condition")
 		}
-		j.Errorf(loop, "this loop will spin, using 100%% CPU")
 
 		return true
 	}
@@ -725,7 +733,7 @@ func (c *Checker) CheckDubiousDeferInChannelRangeLoop(j *lint.Job) {
 		if !ok {
 			return true
 		}
-		typ := TypeOf(j, loop.X)
+		typ := j.Program.Info.TypeOf(loop.X)
 		_, ok = typ.Underlying().(*types.Chan)
 		if !ok {
 			return true
@@ -754,7 +762,7 @@ func (c *Checker) CheckTestMainExit(j *lint.Job) {
 			return true
 		}
 
-		arg := ObjectOf(j, node.(*ast.FuncDecl).Type.Params.List[0].Names[0])
+		arg := j.Program.Info.ObjectOf(node.(*ast.FuncDecl).Type.Params.List[0].Names[0])
 		callsRun := false
 		fn2 := func(node ast.Node) bool {
 			call, ok := node.(*ast.CallExpr)
@@ -769,7 +777,7 @@ func (c *Checker) CheckTestMainExit(j *lint.Job) {
 			if !ok {
 				return true
 			}
-			if arg != ObjectOf(j, ident) {
+			if arg != j.Program.Info.ObjectOf(ident) {
 				return true
 			}
 			if sel.Sel.Name == "Run" {
@@ -782,7 +790,7 @@ func (c *Checker) CheckTestMainExit(j *lint.Job) {
 
 		callsExit := false
 		fn3 := func(node ast.Node) bool {
-			if IsCallToAST(j, node, "os.Exit") {
+			if j.IsCallToAST(node, "os.Exit") {
 				callsExit = true
 				return false
 			}
@@ -814,7 +822,8 @@ func isTestMain(j *lint.Job, node ast.Node) bool {
 	if len(arg.Names) != 1 {
 		return false
 	}
-	return IsOfType(j, arg.Type, "*testing.M")
+	typ := j.Program.Info.TypeOf(arg.Type)
+	return typ != nil && typ.String() == "*testing.M"
 }
 
 func (c *Checker) CheckExec(j *lint.Job) {
@@ -823,18 +832,17 @@ func (c *Checker) CheckExec(j *lint.Job) {
 		if !ok {
 			return true
 		}
-		if !IsCallToAST(j, call, "os/exec.Command") {
+		if !j.IsCallToAST(call, "os/exec.Command") {
 			return true
 		}
-		val, ok := ExprToString(j, call.Args[Arg("os/exec.Command.name")])
+		val, ok := j.ExprToString(call.Args[0])
 		if !ok {
 			return true
 		}
 		if !strings.Contains(val, " ") || strings.Contains(val, `\`) || strings.Contains(val, "/") {
 			return true
 		}
-		j.Errorf(call.Args[Arg("os/exec.Command.name")],
-			"first argument to exec.Command looks like a shell command, but a program name or path are expected")
+		j.Errorf(call.Args[0], "first argument to exec.Command looks like a shell command, but a program name or path are expected")
 		return true
 	}
 	for _, f := range j.Program.Files {
@@ -872,7 +880,7 @@ func (c *Checker) CheckLhsRhsIdentical(j *lint.Job) {
 		}
 		switch op.Op {
 		case token.EQL, token.NEQ:
-			if basic, ok := TypeOf(j, op.X).Underlying().(*types.Basic); ok {
+			if basic, ok := j.Program.Info.TypeOf(op.X).(*types.Basic); ok {
 				if kind := basic.Kind(); kind == types.Float32 || kind == types.Float64 {
 					// f == f and f != f might be used to check for NaN
 					return true
@@ -886,7 +894,7 @@ func (c *Checker) CheckLhsRhsIdentical(j *lint.Job) {
 			return true
 		}
 
-		if Render(j, op.X) != Render(j, op.Y) {
+		if j.Render(op.X) != j.Render(op.Y) {
 			return true
 		}
 		j.Errorf(op, "identical expressions on the left and right side of the '%s' operator", op.Op)
@@ -964,24 +972,18 @@ func (c *Checker) CheckUnsafePrintf(j *lint.Job) {
 		if !ok {
 			return true
 		}
-		var arg int
-		if IsCallToAnyAST(j, call, "fmt.Printf", "fmt.Sprintf", "log.Printf") {
-			arg = Arg("fmt.Printf.format")
-		} else if IsCallToAnyAST(j, call, "fmt.Fprintf") {
-			arg = Arg("fmt.Fprintf.format")
-		} else {
+		if !j.IsCallToAnyAST(call, "fmt.Printf", "fmt.Sprintf", "log.Printf") {
 			return true
 		}
-		if len(call.Args) != arg+1 {
+		if len(call.Args) != 1 {
 			return true
 		}
-		switch call.Args[arg].(type) {
+		switch call.Args[0].(type) {
 		case *ast.CallExpr, *ast.Ident:
 		default:
 			return true
 		}
-		j.Errorf(call.Args[arg],
-			"printf-style function with dynamic format string and no further arguments should use print-style function instead")
+		j.Errorf(call.Args[0], "printf-style function with dynamic first argument and no further arguments should use print-style function instead")
 		return true
 	}
 	for _, f := range j.Program.Files {
@@ -1019,7 +1021,7 @@ func (c *Checker) CheckEarlyDefer(j *lint.Job) {
 			if !ok {
 				continue
 			}
-			sig, ok := TypeOf(j, call.Fun).(*types.Signature)
+			sig, ok := j.Program.Info.TypeOf(call.Fun).(*types.Signature)
 			if !ok {
 				continue
 			}
@@ -1054,7 +1056,7 @@ func (c *Checker) CheckEarlyDefer(j *lint.Job) {
 			if sel.Sel.Name != "Close" {
 				continue
 			}
-			j.Errorf(def, "should check returned error before deferring %s", Render(j, def.Call))
+			j.Errorf(def, "should check returned error before deferring %s", j.Render(def.Call))
 		}
 		return true
 	}
@@ -1098,7 +1100,7 @@ func (c *Checker) CheckEmptyCriticalSection(j *lint.Job) {
 			return nil, "", false
 		}
 
-		fn, ok := ObjectOf(j, sel.Sel).(*types.Func)
+		fn, ok := j.Program.Info.ObjectOf(sel.Sel).(*types.Func)
 		if !ok {
 			return nil, "", false
 		}
@@ -1122,7 +1124,7 @@ func (c *Checker) CheckEmptyCriticalSection(j *lint.Job) {
 			sel1, method1, ok1 := mutexParams(block.List[i])
 			sel2, method2, ok2 := mutexParams(block.List[i+1])
 
-			if !ok1 || !ok2 || Render(j, sel1) != Render(j, sel2) {
+			if !ok1 || !ok2 || j.Render(sel1) != j.Render(sel2) {
 				continue
 			}
 			if (method1 == "Lock" && method2 == "Unlock") ||
@@ -1219,7 +1221,7 @@ func (c *Checker) CheckCanonicalHeaderKey(j *lint.Job) {
 		if !hasType(j, op.X, "net/http.Header") {
 			return true
 		}
-		s, ok := ExprToString(j, op.Index)
+		s, ok := j.ExprToString(op.Index)
 		if !ok {
 			return true
 		}
@@ -1253,7 +1255,7 @@ func (c *Checker) CheckBenchmarkN(j *lint.Job) {
 		if !hasType(j, sel.X, "*testing.B") {
 			return true
 		}
-		j.Errorf(assign, "should not assign to %s", Render(j, sel))
+		j.Errorf(assign, "should not assign to %s", j.Render(sel))
 		return true
 	}
 	for _, f := range j.Program.Files {
@@ -1262,15 +1264,20 @@ func (c *Checker) CheckBenchmarkN(j *lint.Job) {
 }
 
 func (c *Checker) CheckUnreadVariableValues(j *lint.Job) {
-	for _, ssafn := range j.Program.InitialFunctions {
-		if IsExample(ssafn) {
-			continue
-		}
-		node := ssafn.Syntax()
-		if node == nil {
-			continue
+	fn := func(node ast.Node) bool {
+		switch node.(type) {
+		case *ast.FuncDecl, *ast.FuncLit:
+		default:
+			return true
 		}
 
+		ssafn := c.nodeFns[node]
+		if ssafn == nil {
+			return true
+		}
+		if lint.IsExample(ssafn) {
+			return true
+		}
 		ast.Inspect(node, func(node ast.Node) bool {
 			assign, ok := node.(*ast.AssignStmt)
 			if !ok {
@@ -1297,7 +1304,7 @@ func (c *Checker) CheckUnreadVariableValues(j *lint.Job) {
 					if exrefs == nil {
 						continue
 					}
-					if len(FilterDebug(*exrefs)) == 0 {
+					if len(lint.FilterDebug(*exrefs)) == 0 {
 						lhs := assign.Lhs[ex.Index]
 						if ident, ok := lhs.(*ast.Ident); !ok || ok && ident.Name == "_" {
 							continue
@@ -1322,12 +1329,16 @@ func (c *Checker) CheckUnreadVariableValues(j *lint.Job) {
 					// TODO investigate why refs can be nil
 					return true
 				}
-				if len(FilterDebug(*refs)) == 0 {
+				if len(lint.FilterDebug(*refs)) == 0 {
 					j.Errorf(lhs, "this value of %s is never used", lhs)
 				}
 			}
 			return true
 		})
+		return true
+	}
+	for _, f := range j.Program.Files {
+		ast.Inspect(f, fn)
 	}
 }
 
@@ -1396,87 +1407,30 @@ func (c *Checker) CheckNilMaps(j *lint.Job) {
 	}
 }
 
-func (c *Checker) CheckExtremeComparison(j *lint.Job) {
-	isobj := func(expr ast.Expr, name string) bool {
-		sel, ok := expr.(*ast.SelectorExpr)
-		if !ok {
-			return false
-		}
-		return IsObject(ObjectOf(j, sel.Sel), name)
-	}
-
+func (c *Checker) CheckUnsignedComparison(j *lint.Job) {
 	fn := func(node ast.Node) bool {
 		expr, ok := node.(*ast.BinaryExpr)
 		if !ok {
 			return true
 		}
-		tx := TypeOf(j, expr.X)
+		tx := j.Program.Info.TypeOf(expr.X)
 		basic, ok := tx.Underlying().(*types.Basic)
 		if !ok {
 			return true
 		}
-
-		var max string
-		var min string
-
-		switch basic.Kind() {
-		case types.Uint8:
-			max = "math.MaxUint8"
-		case types.Uint16:
-			max = "math.MaxUint16"
-		case types.Uint32:
-			max = "math.MaxUint32"
-		case types.Uint64:
-			max = "math.MaxUint64"
-		case types.Uint:
-			max = "math.MaxUint64"
-
-		case types.Int8:
-			min = "math.MinInt8"
-			max = "math.MaxInt8"
-		case types.Int16:
-			min = "math.MinInt16"
-			max = "math.MaxInt16"
-		case types.Int32:
-			min = "math.MinInt32"
-			max = "math.MaxInt32"
-		case types.Int64:
-			min = "math.MinInt64"
-			max = "math.MaxInt64"
-		case types.Int:
-			min = "math.MinInt64"
-			max = "math.MaxInt64"
+		if (basic.Info() & types.IsUnsigned) == 0 {
+			return true
 		}
-
-		if (expr.Op == token.GTR || expr.Op == token.GEQ) && isobj(expr.Y, max) ||
-			(expr.Op == token.LSS || expr.Op == token.LEQ) && isobj(expr.X, max) {
-			j.Errorf(expr, "no value of type %s is greater than %s", basic, max)
+		lit, ok := expr.Y.(*ast.BasicLit)
+		if !ok || lit.Value != "0" {
+			return true
 		}
-		if expr.Op == token.LEQ && isobj(expr.Y, max) ||
-			expr.Op == token.GEQ && isobj(expr.X, max) {
-			j.Errorf(expr, "every value of type %s is <= %s", basic, max)
+		switch expr.Op {
+		case token.GEQ:
+			j.Errorf(expr, "unsigned values are always >= 0")
+		case token.LSS:
+			j.Errorf(expr, "unsigned values are never < 0")
 		}
-
-		if (basic.Info() & types.IsUnsigned) != 0 {
-			if (expr.Op == token.LSS || expr.Op == token.LEQ) && IsIntLiteral(expr.Y, "0") ||
-				(expr.Op == token.GTR || expr.Op == token.GEQ) && IsIntLiteral(expr.X, "0") {
-				j.Errorf(expr, "no value of type %s is less than 0", basic)
-			}
-			if expr.Op == token.GEQ && IsIntLiteral(expr.Y, "0") ||
-				expr.Op == token.LEQ && IsIntLiteral(expr.X, "0") {
-				j.Errorf(expr, "every value of type %s is >= 0", basic)
-			}
-		} else {
-			if (expr.Op == token.LSS || expr.Op == token.LEQ) && isobj(expr.Y, min) ||
-				(expr.Op == token.GTR || expr.Op == token.GEQ) && isobj(expr.X, min) {
-				j.Errorf(expr, "no value of type %s is less than %s", basic, min)
-			}
-			if expr.Op == token.GEQ && isobj(expr.Y, min) ||
-				expr.Op == token.LEQ && isobj(expr.X, min) {
-				j.Errorf(expr, "every value of type %s is >= %s", basic, min)
-			}
-		}
-
 		return true
 	}
 	for _, f := range j.Program.Files {
@@ -1526,136 +1480,144 @@ func consts(val ssa.Value, out []*ssa.Const, visitedPhis map[string]bool) ([]*ss
 }
 
 func (c *Checker) CheckLoopCondition(j *lint.Job) {
-	for _, ssafn := range j.Program.InitialFunctions {
-		fn := func(node ast.Node) bool {
-			loop, ok := node.(*ast.ForStmt)
-			if !ok {
-				return true
-			}
-			if loop.Init == nil || loop.Cond == nil || loop.Post == nil {
-				return true
-			}
-			init, ok := loop.Init.(*ast.AssignStmt)
-			if !ok || len(init.Lhs) != 1 || len(init.Rhs) != 1 {
-				return true
-			}
-			cond, ok := loop.Cond.(*ast.BinaryExpr)
-			if !ok {
-				return true
-			}
-			x, ok := cond.X.(*ast.Ident)
-			if !ok {
-				return true
-			}
-			lhs, ok := init.Lhs[0].(*ast.Ident)
-			if !ok {
-				return true
-			}
-			if x.Obj != lhs.Obj {
-				return true
-			}
-			if _, ok := loop.Post.(*ast.IncDecStmt); !ok {
-				return true
-			}
-
-			v, isAddr := ssafn.ValueForExpr(cond.X)
-			if v == nil || isAddr {
-				return true
-			}
-			switch v := v.(type) {
-			case *ssa.Phi:
-				ops := v.Operands(nil)
-				if len(ops) != 2 {
-					return true
-				}
-				_, ok := (*ops[0]).(*ssa.Const)
-				if !ok {
-					return true
-				}
-				sigma, ok := (*ops[1]).(*ssa.Sigma)
-				if !ok {
-					return true
-				}
-				if sigma.X != v {
-					return true
-				}
-			case *ssa.UnOp:
-				return true
-			}
-			j.Errorf(cond, "variable in loop condition never changes")
-
+	fn := func(node ast.Node) bool {
+		loop, ok := node.(*ast.ForStmt)
+		if !ok {
 			return true
 		}
-		Inspect(ssafn.Syntax(), fn)
+		if loop.Init == nil || loop.Cond == nil || loop.Post == nil {
+			return true
+		}
+		init, ok := loop.Init.(*ast.AssignStmt)
+		if !ok || len(init.Lhs) != 1 || len(init.Rhs) != 1 {
+			return true
+		}
+		cond, ok := loop.Cond.(*ast.BinaryExpr)
+		if !ok {
+			return true
+		}
+		x, ok := cond.X.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		lhs, ok := init.Lhs[0].(*ast.Ident)
+		if !ok {
+			return true
+		}
+		if x.Obj != lhs.Obj {
+			return true
+		}
+		if _, ok := loop.Post.(*ast.IncDecStmt); !ok {
+			return true
+		}
+
+		ssafn := c.nodeFns[cond]
+		if ssafn == nil {
+			return true
+		}
+		v, isAddr := ssafn.ValueForExpr(cond.X)
+		if v == nil || isAddr {
+			return true
+		}
+		switch v := v.(type) {
+		case *ssa.Phi:
+			ops := v.Operands(nil)
+			if len(ops) != 2 {
+				return true
+			}
+			_, ok := (*ops[0]).(*ssa.Const)
+			if !ok {
+				return true
+			}
+			sigma, ok := (*ops[1]).(*ssa.Sigma)
+			if !ok {
+				return true
+			}
+			if sigma.X != v {
+				return true
+			}
+		case *ssa.UnOp:
+			return true
+		}
+		j.Errorf(cond, "variable in loop condition never changes")
+
+		return true
+	}
+	for _, f := range j.Program.Files {
+		ast.Inspect(f, fn)
 	}
 }
 
 func (c *Checker) CheckArgOverwritten(j *lint.Job) {
-	for _, ssafn := range j.Program.InitialFunctions {
-		fn := func(node ast.Node) bool {
-			var typ *ast.FuncType
-			var body *ast.BlockStmt
-			switch fn := node.(type) {
-			case *ast.FuncDecl:
-				typ = fn.Type
-				body = fn.Body
-			case *ast.FuncLit:
-				typ = fn.Type
-				body = fn.Body
-			}
-			if body == nil {
-				return true
-			}
-			if len(typ.Params.List) == 0 {
-				return true
-			}
-			for _, field := range typ.Params.List {
-				for _, arg := range field.Names {
-					obj := ObjectOf(j, arg)
-					var ssaobj *ssa.Parameter
-					for _, param := range ssafn.Params {
-						if param.Object() == obj {
-							ssaobj = param
-							break
-						}
-					}
-					if ssaobj == nil {
-						continue
-					}
-					refs := ssaobj.Referrers()
-					if refs == nil {
-						continue
-					}
-					if len(FilterDebug(*refs)) != 0 {
-						continue
-					}
-
-					assigned := false
-					ast.Inspect(body, func(node ast.Node) bool {
-						assign, ok := node.(*ast.AssignStmt)
-						if !ok {
-							return true
-						}
-						for _, lhs := range assign.Lhs {
-							ident, ok := lhs.(*ast.Ident)
-							if !ok {
-								continue
-							}
-							if ObjectOf(j, ident) == obj {
-								assigned = true
-								return false
-							}
-						}
-						return true
-					})
-					if assigned {
-						j.Errorf(arg, "argument %s is overwritten before first use", arg)
-					}
-				}
-			}
+	fn := func(node ast.Node) bool {
+		var typ *ast.FuncType
+		var body *ast.BlockStmt
+		switch fn := node.(type) {
+		case *ast.FuncDecl:
+			typ = fn.Type
+			body = fn.Body
+		case *ast.FuncLit:
+			typ = fn.Type
+			body = fn.Body
+		}
+		if body == nil {
 			return true
 		}
-		Inspect(ssafn.Syntax(), fn)
+		ssafn := c.nodeFns[node]
+		if ssafn == nil {
+			return true
+		}
+		if len(typ.Params.List) == 0 {
+			return true
+		}
+		for _, field := range typ.Params.List {
+			for _, arg := range field.Names {
+				obj := j.Program.Info.ObjectOf(arg)
+				var ssaobj *ssa.Parameter
+				for _, param := range ssafn.Params {
+					if param.Object() == obj {
+						ssaobj = param
+						break
+					}
+				}
+				if ssaobj == nil {
+					continue
+				}
+				refs := ssaobj.Referrers()
+				if refs == nil {
+					continue
+				}
+				if len(lint.FilterDebug(*refs)) != 0 {
+					continue
+				}
+
+				assigned := false
+				ast.Inspect(body, func(node ast.Node) bool {
+					assign, ok := node.(*ast.AssignStmt)
+					if !ok {
+						return true
+					}
+					for _, lhs := range assign.Lhs {
+						ident, ok := lhs.(*ast.Ident)
+						if !ok {
+							continue
+						}
+						if j.Program.Info.ObjectOf(ident) == obj {
+							assigned = true
+							return false
+						}
+					}
+					return true
+				})
+				if assigned {
+					j.Errorf(arg, "argument %s is overwritten before first use", arg)
+				}
+			}
+		}
+		return true
+	}
+	for _, f := range j.Program.Files {
+		ast.Inspect(f, fn)
 	}
 }
 
@@ -1699,7 +1661,7 @@ func (c *Checker) CheckIneffectiveLoop(j *lint.Job) {
 				body = node.Body
 				loop = node
 			case *ast.RangeStmt:
-				typ := TypeOf(j, node.X)
+				typ := j.Program.Info.TypeOf(node.X)
 				if _, ok := typ.Underlying().(*types.Map); ok {
 					// looping once over a map is a valid pattern for
 					// getting an arbitrary element.
@@ -1779,17 +1741,17 @@ func (c *Checker) CheckNilContext(j *lint.Job) {
 		if len(call.Args) == 0 {
 			return true
 		}
-		if typ, ok := TypeOf(j, call.Args[0]).(*types.Basic); !ok || typ.Kind() != types.UntypedNil {
+		if typ, ok := j.Program.Info.TypeOf(call.Args[0]).(*types.Basic); !ok || typ.Kind() != types.UntypedNil {
 			return true
 		}
-		sig, ok := TypeOf(j, call.Fun).(*types.Signature)
+		sig, ok := j.Program.Info.TypeOf(call.Fun).(*types.Signature)
 		if !ok {
 			return true
 		}
 		if sig.Params().Len() == 0 {
 			return true
 		}
-		if !IsType(sig.Params().At(0).Type(), "context.Context") {
+		if types.TypeString(sig.Params().At(0).Type(), nil) != "context.Context" {
 			return true
 		}
 		j.Errorf(call.Args[0],
@@ -1817,7 +1779,7 @@ func (c *Checker) CheckSeeker(j *lint.Job) {
 		if len(call.Args) != 2 {
 			return true
 		}
-		arg0, ok := call.Args[Arg("(io.Seeker).Seek.offset")].(*ast.SelectorExpr)
+		arg0, ok := call.Args[0].(*ast.SelectorExpr)
 		if !ok {
 			return true
 		}
@@ -1944,7 +1906,7 @@ func (c *Checker) CheckConcurrentTesting(j *lint.Job) {
 						if recv == nil {
 							continue
 						}
-						if !IsType(recv.Type(), "*testing.common") {
+						if types.TypeString(recv.Type(), nil) != "*testing.common" {
 							continue
 						}
 						fn, ok := call.Call.StaticCallee().Object().(*types.Func)
@@ -1972,7 +1934,7 @@ func (c *Checker) CheckCyclicFinalizer(j *lint.Job) {
 			if edge.Callee.Func.RelString(nil) != "runtime.SetFinalizer" {
 				continue
 			}
-			arg0 := edge.Site.Common().Args[Arg("runtime.SetFinalizer.obj")]
+			arg0 := edge.Site.Common().Args[0]
 			if iface, ok := arg0.(*ssa.MakeInterface); ok {
 				arg0 = iface.X
 			}
@@ -1984,7 +1946,7 @@ func (c *Checker) CheckCyclicFinalizer(j *lint.Job) {
 			if !ok {
 				continue
 			}
-			arg1 := edge.Site.Common().Args[Arg("runtime.SetFinalizer.finalizer")]
+			arg1 := edge.Site.Common().Args[1]
 			if iface, ok := arg1.(*ssa.MakeInterface); ok {
 				arg1 = iface.X
 			}
@@ -2029,7 +1991,7 @@ func (c *Checker) CheckSliceOutOfBounds(j *lint.Job) {
 func (c *Checker) CheckDeferLock(j *lint.Job) {
 	for _, ssafn := range j.Program.InitialFunctions {
 		for _, block := range ssafn.Blocks {
-			instrs := FilterDebug(block.Instrs)
+			instrs := lint.FilterDebug(block.Instrs)
 			if len(instrs) < 2 {
 				continue
 			}
@@ -2038,14 +2000,14 @@ func (c *Checker) CheckDeferLock(j *lint.Job) {
 				if !ok {
 					continue
 				}
-				if !IsCallTo(call.Common(), "(*sync.Mutex).Lock") && !IsCallTo(call.Common(), "(*sync.RWMutex).RLock") {
+				if !lint.IsCallTo(call.Common(), "(*sync.Mutex).Lock") && !lint.IsCallTo(call.Common(), "(*sync.RWMutex).RLock") {
 					continue
 				}
 				nins, ok := instrs[i+1].(*ssa.Defer)
 				if !ok {
 					continue
 				}
-				if !IsCallTo(&nins.Call, "(*sync.Mutex).Lock") && !IsCallTo(&nins.Call, "(*sync.RWMutex).RLock") {
+				if !lint.IsCallTo(&nins.Call, "(*sync.Mutex).Lock") && !lint.IsCallTo(&nins.Call, "(*sync.RWMutex).RLock") {
 					continue
 				}
 				if call.Common().Args[0] != nins.Call.Args[0] {
@@ -2071,7 +2033,7 @@ func (c *Checker) CheckNaNComparison(j *lint.Job) {
 		if !ok {
 			return false
 		}
-		return IsCallTo(call.Common(), "math.NaN")
+		return lint.IsCallTo(call.Common(), "math.NaN")
 	}
 	for _, ssafn := range j.Program.InitialFunctions {
 		for _, block := range ssafn.Blocks {
@@ -2129,7 +2091,8 @@ func objectName(obj types.Object) string {
 	}
 	var name string
 	if obj.Pkg() != nil && obj.Pkg().Scope().Lookup(obj.Name()) == obj {
-		s := obj.Pkg().Path()
+		var s string
+		s = obj.Pkg().Path()
 		if s != "" {
 			name += s + "."
 		}
@@ -2142,22 +2105,22 @@ func isName(j *lint.Job, expr ast.Expr, name string) bool {
 	var obj types.Object
 	switch expr := expr.(type) {
 	case *ast.Ident:
-		obj = ObjectOf(j, expr)
+		obj = j.Program.Info.ObjectOf(expr)
 	case *ast.SelectorExpr:
-		obj = ObjectOf(j, expr.Sel)
+		obj = j.Program.Info.ObjectOf(expr.Sel)
 	}
 	return objectName(obj) == name
 }
 
 func (c *Checker) CheckLeakyTimeTick(j *lint.Job) {
 	for _, ssafn := range j.Program.InitialFunctions {
-		if IsInMain(j, ssafn) || IsInTest(j, ssafn) {
+		if j.IsInMain(ssafn) || j.IsInTest(ssafn) {
 			continue
 		}
 		for _, block := range ssafn.Blocks {
 			for _, ins := range block.Instrs {
 				call, ok := ins.(*ssa.Call)
-				if !ok || !IsCallTo(call.Common(), "time.Tick") {
+				if !ok || !lint.IsCallTo(call.Common(), "time.Tick") {
 					continue
 				}
 				if c.funcDescs.Get(call.Parent()).Infinite {
@@ -2242,7 +2205,7 @@ func (c *Checker) CheckRepeatedIfElse(j *lint.Job) {
 		}
 		counts := map[string]int{}
 		for _, cond := range conds {
-			s := Render(j, cond)
+			s := j.Render(cond)
 			counts[s]++
 			if counts[s] == 2 {
 				j.Errorf(cond, "this condition occurs multiple times in this if/else if chain")
@@ -2278,7 +2241,7 @@ func (c *Checker) CheckSillyBitwiseOps(j *lint.Job) {
 				if len(path) == 0 {
 					continue
 				}
-				if node, ok := path[0].(*ast.BinaryExpr); !ok || !IsZero(node.Y) {
+				if node, ok := path[0].(*ast.BinaryExpr); !ok || !lint.IsZero(node.Y) {
 					continue
 				}
 
@@ -2299,7 +2262,7 @@ func (c *Checker) CheckNonOctalFileMode(j *lint.Job) {
 		if !ok {
 			return true
 		}
-		sig, ok := TypeOf(j, call.Fun).(*types.Signature)
+		sig, ok := j.Program.Info.TypeOf(call.Fun).(*types.Signature)
 		if !ok {
 			return true
 		}
@@ -2307,7 +2270,7 @@ func (c *Checker) CheckNonOctalFileMode(j *lint.Job) {
 		var args []int
 		for i := 0; i < n; i++ {
 			typ := sig.Params().At(i).Type()
-			if IsType(typ, "os.FileMode") {
+			if types.TypeString(typ, nil) == "os.FileMode" {
 				args = append(args, i)
 			}
 		}
@@ -2339,11 +2302,11 @@ func (c *Checker) CheckNonOctalFileMode(j *lint.Job) {
 func (c *Checker) CheckPureFunctions(j *lint.Job) {
 fnLoop:
 	for _, ssafn := range j.Program.InitialFunctions {
-		if IsInTest(j, ssafn) {
+		if j.IsInTest(ssafn) {
 			params := ssafn.Signature.Params()
 			for i := 0; i < params.Len(); i++ {
 				param := params.At(i)
-				if IsType(param.Type(), "*testing.B") {
+				if types.TypeString(param.Type(), nil) == "*testing.B" {
 					// Ignore discarded pure functions in code related
 					// to benchmarks. Instead of matching BenchmarkFoo
 					// functions, we match any function accepting a
@@ -2363,7 +2326,7 @@ fnLoop:
 					continue
 				}
 				refs := ins.Referrers()
-				if refs == nil || len(FilterDebug(*refs)) > 0 {
+				if refs == nil || len(lint.FilterDebug(*refs)) > 0 {
 					continue
 				}
 				callee := ins.Common().StaticCallee()
@@ -2380,7 +2343,7 @@ fnLoop:
 }
 
 func (c *Checker) isDeprecated(j *lint.Job, ident *ast.Ident) (bool, string) {
-	obj := ObjectOf(j, ident)
+	obj := j.Program.Info.ObjectOf(ident)
 	if obj.Pkg() == nil {
 		return false, ""
 	}
@@ -2388,34 +2351,29 @@ func (c *Checker) isDeprecated(j *lint.Job, ident *ast.Ident) (bool, string) {
 	return alt != "", alt
 }
 
-func (c *Checker) CheckDeprecated(j *lint.Job) {
-	// Selectors can appear outside of function literals, e.g. when
-	// declaring package level variables.
+func (c *Checker) enclosingFunc(sel *ast.SelectorExpr) *ssa.Function {
+	fn := c.nodeFns[sel]
+	if fn == nil {
+		return nil
+	}
+	for fn.Parent() != nil {
+		fn = fn.Parent()
+	}
+	return fn
+}
 
-	var ssafn *ssa.Function
-	stack := 0
+func (c *Checker) CheckDeprecated(j *lint.Job) {
 	fn := func(node ast.Node) bool {
-		if node == nil {
-			stack--
-		} else {
-			stack++
-		}
-		if stack == 1 {
-			ssafn = nil
-		}
-		if fn, ok := node.(*ast.FuncDecl); ok {
-			ssafn = j.Program.SSA.FuncValue(ObjectOf(j, fn.Name).(*types.Func))
-		}
 		sel, ok := node.(*ast.SelectorExpr)
 		if !ok {
 			return true
 		}
 
-		obj := ObjectOf(j, sel.Sel)
+		obj := j.Program.Info.ObjectOf(sel.Sel)
 		if obj.Pkg() == nil {
 			return true
 		}
-		nodePkg := j.NodePackage(node).Types
+		nodePkg := j.NodePackage(node).Pkg
 		if nodePkg == obj.Pkg() || obj.Pkg().Path()+"_test" == nodePkg.Path() {
 			// Don't flag stuff in our own package
 			return true
@@ -2427,19 +2385,19 @@ func (c *Checker) CheckDeprecated(j *lint.Job) {
 			// already in 1.0, and we're targeting 1.2, it still
 			// makes sense to use the alternative from 1.0, to be
 			// future-proof.
-			minVersion := deprecated.Stdlib[SelectorName(j, sel)].AlternativeAvailableSince
-			if !IsGoVersion(j, minVersion) {
+			minVersion := deprecated.Stdlib[j.SelectorName(sel)].AlternativeAvailableSince
+			if !j.IsGoVersion(minVersion) {
 				return true
 			}
 
-			if ssafn != nil {
-				if _, ok := c.deprecatedObjs[ssafn.Object()]; ok {
+			if fn := c.enclosingFunc(sel); fn != nil {
+				if _, ok := c.deprecatedObjs[fn.Object()]; ok {
 					// functions that are deprecated may use deprecated
 					// symbols
 					return true
 				}
 			}
-			j.Errorf(sel, "%s is deprecated: %s", Render(j, sel), alt)
+			j.Errorf(sel, "%s is deprecated: %s", j.Render(sel), alt)
 			return true
 		}
 		return true
@@ -2512,6 +2470,17 @@ func (c *Checker) checkCalls(j *lint.Job, rules map[string]CallCheck) {
 	}
 }
 
+func unwrapFunction(val ssa.Value) *ssa.Function {
+	switch val := val.(type) {
+	case *ssa.Function:
+		return val
+	case *ssa.MakeClosure:
+		return val.Fn.(*ssa.Function)
+	default:
+		return nil
+	}
+}
+
 func shortCallName(call *ssa.CallCommon) string {
 	if call.IsInvoke() {
 		return ""
@@ -2527,6 +2496,27 @@ func shortCallName(call *ssa.CallCommon) string {
 		return v.Name()
 	}
 	return ""
+}
+
+func hasCallTo(block *ssa.BasicBlock, name string) bool {
+	for _, ins := range block.Instrs {
+		call, ok := ins.(*ssa.Call)
+		if !ok {
+			continue
+		}
+		if lint.IsCallTo(call.Common(), name) {
+			return true
+		}
+	}
+	return false
+}
+
+// deref returns a pointer's element type; otherwise it returns typ.
+func deref(typ types.Type) types.Type {
+	if p, ok := typ.Underlying().(*types.Pointer); ok {
+		return p.Elem()
+	}
+	return typ
 }
 
 func (c *Checker) CheckWriterBufferModified(j *lint.Job) {
@@ -2549,7 +2539,7 @@ func (c *Checker) CheckWriterBufferModified(j *lint.Job) {
 		if basic, ok := sig.Results().At(0).Type().(*types.Basic); !ok || basic.Kind() != types.Int {
 			continue
 		}
-		if named, ok := sig.Results().At(1).Type().(*types.Named); !ok || !IsType(named, "error") {
+		if named, ok := sig.Results().At(1).Type().(*types.Named); !ok || types.TypeString(named, nil) != "error" {
 			continue
 		}
 
@@ -2566,7 +2556,7 @@ func (c *Checker) CheckWriterBufferModified(j *lint.Job) {
 					}
 					j.Errorf(ins, "io.Writer.Write must not modify the provided buffer, not even temporarily")
 				case *ssa.Call:
-					if !IsCallTo(ins.Common(), "append") {
+					if !lint.IsCallTo(ins.Common(), "append") {
 						continue
 					}
 					if ins.Common().Args[0] != ssafn.Params[1] {
@@ -2592,35 +2582,30 @@ func loopedRegexp(name string) CallCheck {
 }
 
 func (c *Checker) CheckEmptyBranch(j *lint.Job) {
-	for _, ssafn := range j.Program.InitialFunctions {
-		if ssafn.Syntax() == nil {
-			continue
-		}
-		if IsGenerated(j.File(ssafn.Syntax())) {
-			continue
-		}
-		if IsExample(ssafn) {
-			continue
-		}
-		fn := func(node ast.Node) bool {
-			ifstmt, ok := node.(*ast.IfStmt)
-			if !ok {
-				return true
-			}
-			if ifstmt.Else != nil {
-				b, ok := ifstmt.Else.(*ast.BlockStmt)
-				if !ok || len(b.List) != 0 {
-					return true
-				}
-				j.Errorf(ifstmt.Else, "empty branch")
-			}
-			if len(ifstmt.Body.List) != 0 {
-				return true
-			}
-			j.Errorf(ifstmt, "empty branch")
+	fn := func(node ast.Node) bool {
+		ifstmt, ok := node.(*ast.IfStmt)
+		if !ok {
 			return true
 		}
-		Inspect(ssafn.Syntax(), fn)
+		ssafn := c.nodeFns[node]
+		if lint.IsExample(ssafn) {
+			return true
+		}
+		if ifstmt.Else != nil {
+			b, ok := ifstmt.Else.(*ast.BlockStmt)
+			if !ok || len(b.List) != 0 {
+				return true
+			}
+			j.Errorf(ifstmt.Else, "empty branch")
+		}
+		if len(ifstmt.Body.List) != 0 {
+			return true
+		}
+		j.Errorf(ifstmt, "empty branch")
+		return true
+	}
+	for _, f := range c.filterGenerated(j.Program.Files) {
+		ast.Inspect(f, fn)
 	}
 }
 
@@ -2676,7 +2661,7 @@ func (c *Checker) CheckMapBytesKey(j *lint.Job) {
 }
 
 func (c *Checker) CheckRangeStringRunes(j *lint.Job) {
-	sharedcheck.CheckRangeStringRunes(j)
+	sharedcheck.CheckRangeStringRunes(c.nodeFns, j)
 }
 
 func (c *Checker) CheckSelfAssignment(j *lint.Job) {
@@ -2689,15 +2674,15 @@ func (c *Checker) CheckSelfAssignment(j *lint.Job) {
 			return true
 		}
 		for i, stmt := range assign.Lhs {
-			rlh := Render(j, stmt)
-			rrh := Render(j, assign.Rhs[i])
+			rlh := j.Render(stmt)
+			rrh := j.Render(assign.Rhs[i])
 			if rlh == rrh {
 				j.Errorf(assign, "self-assignment of %s to %s", rrh, rlh)
 			}
 		}
 		return true
 	}
-	for _, f := range j.Program.Files {
+	for _, f := range c.filterGenerated(j.Program.Files) {
 		ast.Inspect(f, fn)
 	}
 }
@@ -2721,7 +2706,7 @@ func buildTagsIdentical(s1, s2 []string) bool {
 }
 
 func (c *Checker) CheckDuplicateBuildConstraints(job *lint.Job) {
-	for _, f := range job.Program.Files {
+	for _, f := range c.filterGenerated(job.Program.Files) {
 		constraints := buildTags(f)
 		for i, constraint1 := range constraints {
 			for j, constraint2 := range constraints {
@@ -2738,39 +2723,6 @@ func (c *Checker) CheckDuplicateBuildConstraints(job *lint.Job) {
 	}
 }
 
-func (c *Checker) CheckSillyRegexp(j *lint.Job) {
-	// We could use the rule checking engine for this, but the
-	// arguments aren't really invalid.
-	for _, fn := range j.Program.InitialFunctions {
-		for _, b := range fn.Blocks {
-			for _, ins := range b.Instrs {
-				call, ok := ins.(*ssa.Call)
-				if !ok {
-					continue
-				}
-				switch CallName(call.Common()) {
-				case "regexp.MustCompile", "regexp.Compile", "regexp.Match", "regexp.MatchReader", "regexp.MatchString":
-				default:
-					continue
-				}
-				c, ok := call.Common().Args[0].(*ssa.Const)
-				if !ok {
-					continue
-				}
-				s := constant.StringVal(c.Value)
-				re, err := syntax.Parse(s, 0)
-				if err != nil {
-					continue
-				}
-				if re.Op != syntax.OpLiteral && re.Op != syntax.OpEmptyMatch {
-					continue
-				}
-				j.Errorf(call, "regular expression does not contain any meta characters")
-			}
-		}
-	}
-}
-
 func (c *Checker) CheckMissingEnumTypesInDeclaration(j *lint.Job) {
 	fn := func(node ast.Node) bool {
 		decl, ok := node.(*ast.GenDecl)
@@ -2778,230 +2730,48 @@ func (c *Checker) CheckMissingEnumTypesInDeclaration(j *lint.Job) {
 			return true
 		}
 		if !decl.Lparen.IsValid() {
+			// not a parenthesised gendecl
+			//
+			// TODO(dh): do we need this check, considering we require
+			// decl.Specs to contain 2+ elements?
 			return true
 		}
 		if decl.Tok != token.CONST {
 			return true
 		}
-
-		groups := GroupSpecs(j, decl.Specs)
-	groupLoop:
-		for _, group := range groups {
-			if len(group) < 2 {
+		if len(decl.Specs) < 2 {
+			return true
+		}
+		if decl.Specs[0].(*ast.ValueSpec).Type == nil {
+			// first constant doesn't have a type
+			return true
+		}
+		for i, spec := range decl.Specs {
+			spec := spec.(*ast.ValueSpec)
+			if len(spec.Names) != 1 || len(spec.Values) != 1 {
+				return true
+			}
+			switch v := spec.Values[0].(type) {
+			case *ast.BasicLit:
+			case *ast.UnaryExpr:
+				if _, ok := v.X.(*ast.BasicLit); !ok {
+					return true
+				}
+			default:
+				// if it's not a literal it might be typed, such as
+				// time.Microsecond = 1000 * Nanosecond
+				return true
+			}
+			if i == 0 {
 				continue
 			}
-			if group[0].(*ast.ValueSpec).Type == nil {
-				// first constant doesn't have a type
-				continue groupLoop
+			if spec.Type != nil {
+				return true
 			}
-			for i, spec := range group {
-				spec := spec.(*ast.ValueSpec)
-				if len(spec.Names) != 1 || len(spec.Values) != 1 {
-					continue groupLoop
-				}
-				switch v := spec.Values[0].(type) {
-				case *ast.BasicLit:
-				case *ast.UnaryExpr:
-					if _, ok := v.X.(*ast.BasicLit); !ok {
-						continue groupLoop
-					}
-				default:
-					// if it's not a literal it might be typed, such as
-					// time.Microsecond = 1000 * Nanosecond
-					continue groupLoop
-				}
-				if i == 0 {
-					continue
-				}
-				if spec.Type != nil {
-					continue groupLoop
-				}
-			}
-			j.Errorf(group[0], "only the first constant in this group has an explicit type")
 		}
+		j.Errorf(decl, "only the first constant has an explicit type")
 		return true
 	}
-	for _, f := range j.Program.Files {
-		ast.Inspect(f, fn)
-	}
-}
-
-func (c *Checker) CheckTimerResetReturnValue(j *lint.Job) {
-	for _, fn := range j.Program.InitialFunctions {
-		for _, block := range fn.Blocks {
-			for _, ins := range block.Instrs {
-				call, ok := ins.(*ssa.Call)
-				if !ok {
-					continue
-				}
-				if !IsCallTo(call.Common(), "(*time.Timer).Reset") {
-					continue
-				}
-				refs := call.Referrers()
-				if refs == nil {
-					continue
-				}
-				for _, ref := range FilterDebug(*refs) {
-					ifstmt, ok := ref.(*ssa.If)
-					if !ok {
-						continue
-					}
-
-					found := false
-					for _, succ := range ifstmt.Block().Succs {
-						if len(succ.Preds) != 1 {
-							// Merge point, not a branch in the
-							// syntactical sense.
-
-							// FIXME(dh): this is broken for if
-							// statements a la "if x || y"
-							continue
-						}
-						ssautil.Walk(succ, func(b *ssa.BasicBlock) bool {
-							if !succ.Dominates(b) {
-								// We've reached the end of the branch
-								return false
-							}
-							for _, ins := range b.Instrs {
-								// TODO(dh): we should check that
-								// we're receiving from the channel of
-								// a time.Timer to further reduce
-								// false positives. Not a key
-								// priority, considering the rarity of
-								// Reset and the tiny likeliness of a
-								// false positive
-								if ins, ok := ins.(*ssa.UnOp); ok && ins.Op == token.ARROW && IsType(ins.X.Type(), "<-chan time.Time") {
-									found = true
-									return false
-								}
-							}
-							return true
-						})
-					}
-
-					if found {
-						j.Errorf(call, "it is not possible to use Reset's return value correctly, as there is a race condition between draining the channel and the new timer expiring")
-					}
-				}
-			}
-		}
-	}
-}
-
-func (c *Checker) CheckToLowerToUpperComparison(j *lint.Job) {
-	fn := func(node ast.Node) bool {
-		binExpr, ok := node.(*ast.BinaryExpr)
-		if !ok {
-			return true
-		}
-
-		var negative bool
-		switch binExpr.Op {
-		case token.EQL:
-			negative = false
-		case token.NEQ:
-			negative = true
-		default:
-			return true
-		}
-
-		const (
-			lo = "strings.ToLower"
-			up = "strings.ToUpper"
-		)
-
-		var call string
-		if IsCallToAST(j, binExpr.X, lo) && IsCallToAST(j, binExpr.Y, lo) {
-			call = lo
-		} else if IsCallToAST(j, binExpr.X, up) && IsCallToAST(j, binExpr.Y, up) {
-			call = up
-		} else {
-			return true
-		}
-
-		bang := ""
-		if negative {
-			bang = "!"
-		}
-
-		j.Errorf(binExpr, "should use %sstrings.EqualFold(a, b) instead of %s(a) %s %s(b)", bang, call, binExpr.Op, call)
-		return true
-	}
-
-	for _, f := range j.Program.Files {
-		ast.Inspect(f, fn)
-	}
-}
-
-func (c *Checker) CheckUnreachableTypeCases(j *lint.Job) {
-	// Check if T subsumes V in a type switch. T subsumes V if T is an interface and T's method set is a subset of V's method set.
-	subsumes := func(T, V types.Type) bool {
-		tIface, ok := T.Underlying().(*types.Interface)
-		if !ok {
-			return false
-		}
-
-		return types.Implements(V, tIface)
-	}
-
-	subsumesAny := func(Ts, Vs []types.Type) (types.Type, types.Type, bool) {
-		for _, T := range Ts {
-			for _, V := range Vs {
-				if subsumes(T, V) {
-					return T, V, true
-				}
-			}
-		}
-
-		return nil, nil, false
-	}
-
-	fn := func(node ast.Node) bool {
-		tsStmt, ok := node.(*ast.TypeSwitchStmt)
-		if !ok {
-			return true
-		}
-
-		type ccAndTypes struct {
-			cc    *ast.CaseClause
-			types []types.Type
-		}
-
-		// All asserted types in the order of case clauses.
-		ccs := make([]ccAndTypes, 0, len(tsStmt.Body.List))
-		for _, stmt := range tsStmt.Body.List {
-			cc, _ := stmt.(*ast.CaseClause)
-
-			// Exclude the 'default' case.
-			if len(cc.List) == 0 {
-				continue
-			}
-
-			Ts := make([]types.Type, len(cc.List))
-			for i, expr := range cc.List {
-				Ts[i] = TypeOf(j, expr)
-			}
-
-			ccs = append(ccs, ccAndTypes{cc: cc, types: Ts})
-		}
-
-		if len(ccs) <= 1 {
-			// Zero or one case clauses, nothing to check.
-			return true
-		}
-
-		// Check if case clauses following cc have types that are subsumed by cc.
-		for i, cc := range ccs[:len(ccs)-1] {
-			for _, next := range ccs[i+1:] {
-				if T, V, yes := subsumesAny(cc.types, next.types); yes {
-					j.Errorf(next.cc, "unreachable case clause: %s will always match before %s", T.String(), V.String())
-				}
-			}
-		}
-
-		return true
-	}
-
 	for _, f := range j.Program.Files {
 		ast.Inspect(f, fn)
 	}

@@ -1,7 +1,6 @@
 package processors
 
 import (
-	"github.com/golangci/golangci-lint/pkg/config"
 	"github.com/golangci/golangci-lint/pkg/result"
 )
 
@@ -9,26 +8,14 @@ type linterToCountMap map[string]int
 type fileToLinterToCountMap map[string]linterToCountMap
 
 type MaxPerFileFromLinter struct {
-	flc                        fileToLinterToCountMap
-	maxPerFileFromLinterConfig map[string]int
+	flc fileToLinterToCountMap
 }
 
 var _ Processor = &MaxPerFileFromLinter{}
 
-func NewMaxPerFileFromLinter(cfg *config.Config) *MaxPerFileFromLinter {
-	maxPerFileFromLinterConfig := map[string]int{
-		"typecheck": 3,
-	}
-	if !cfg.Issues.NeedFix {
-		// if we don't fix we do this limiting to not annoy user;
-		// otherwise we need to fix all issues in the file at once
-		maxPerFileFromLinterConfig["gofmt"] = 1
-		maxPerFileFromLinterConfig["goimports"] = 1
-	}
-
+func NewMaxPerFileFromLinter() *MaxPerFileFromLinter {
 	return &MaxPerFileFromLinter{
-		flc:                        fileToLinterToCountMap{}, //nolint:goimports,gofmt
-		maxPerFileFromLinterConfig: maxPerFileFromLinterConfig,
+		flc: fileToLinterToCountMap{},
 	}
 }
 
@@ -36,9 +23,15 @@ func (p MaxPerFileFromLinter) Name() string {
 	return "max_per_file_from_linter"
 }
 
+var maxPerFileFromLinterConfig = map[string]int{
+	"gofmt":     1,
+	"goimports": 1,
+	"typecheck": 3,
+}
+
 func (p *MaxPerFileFromLinter) Process(issues []result.Issue) ([]result.Issue, error) {
 	return filterIssues(issues, func(i *result.Issue) bool {
-		limit := p.maxPerFileFromLinterConfig[i.FromLinter]
+		limit := maxPerFileFromLinterConfig[i.FromLinter]
 		if limit == 0 {
 			return true
 		}

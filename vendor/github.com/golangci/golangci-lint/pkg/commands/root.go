@@ -5,7 +5,6 @@ import (
 	"os"
 	"runtime"
 	"runtime/pprof"
-	"strconv"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -14,7 +13,7 @@ import (
 	"github.com/golangci/golangci-lint/pkg/logutils"
 )
 
-func (e *Executor) persistentPreRun(_ *cobra.Command, _ []string) {
+func (e *Executor) persistentPreRun(cmd *cobra.Command, args []string) {
 	if e.cfg.Run.PrintVersion {
 		fmt.Fprintf(logutils.StdOut, "golangci-lint has version %s built from %s on %s\n", e.version, e.commit, e.date)
 		os.Exit(0)
@@ -31,15 +30,9 @@ func (e *Executor) persistentPreRun(_ *cobra.Command, _ []string) {
 			e.log.Fatalf("Can't start CPU profiling: %s", err)
 		}
 	}
-
-	if e.cfg.Run.MemProfilePath != "" {
-		if rate := os.Getenv("GL_MEMPROFILE_RATE"); rate != "" {
-			runtime.MemProfileRate, _ = strconv.Atoi(rate)
-		}
-	}
 }
 
-func (e *Executor) persistentPostRun(_ *cobra.Command, _ []string) {
+func (e *Executor) persistentPostRun(cmd *cobra.Command, args []string) {
 	if e.cfg.Run.CPUProfilePath != "" {
 		pprof.StopCPUProfile()
 	}
@@ -48,43 +41,13 @@ func (e *Executor) persistentPostRun(_ *cobra.Command, _ []string) {
 		if err != nil {
 			e.log.Fatalf("Can't create file %s: %s", e.cfg.Run.MemProfilePath, err)
 		}
-
-		var ms runtime.MemStats
-		runtime.ReadMemStats(&ms)
-		printMemStats(&ms, e.log)
-
+		runtime.GC() // get up-to-date statistics
 		if err := pprof.WriteHeapProfile(f); err != nil {
 			e.log.Fatalf("Can't write heap profile: %s", err)
 		}
-		f.Close()
 	}
 
 	os.Exit(e.exitCode)
-}
-
-func printMemStats(ms *runtime.MemStats, logger logutils.Log) {
-	logger.Infof("Mem stats: alloc=%s total_alloc=%s sys=%s "+
-		"heap_alloc=%s heap_sys=%s heap_idle=%s heap_released=%s heap_in_use=%s "+
-		"stack_in_use=%s stack_sys=%s "+
-		"mspan_sys=%s mcache_sys=%s buck_hash_sys=%s gc_sys=%s other_sys=%s "+
-		"mallocs_n=%d frees_n=%d heap_objects_n=%d gc_cpu_fraction=%.2f",
-		formatMemory(ms.Alloc), formatMemory(ms.TotalAlloc), formatMemory(ms.Sys),
-		formatMemory(ms.HeapAlloc), formatMemory(ms.HeapSys),
-		formatMemory(ms.HeapIdle), formatMemory(ms.HeapReleased), formatMemory(ms.HeapInuse),
-		formatMemory(ms.StackInuse), formatMemory(ms.StackSys),
-		formatMemory(ms.MSpanSys), formatMemory(ms.MCacheSys), formatMemory(ms.BuckHashSys),
-		formatMemory(ms.GCSys), formatMemory(ms.OtherSys),
-		ms.Mallocs, ms.Frees, ms.HeapObjects, ms.GCCPUFraction)
-}
-
-func formatMemory(memBytes uint64) string {
-	if memBytes < 1024 {
-		return fmt.Sprintf("%db", memBytes)
-	}
-	if memBytes < 1024*1024 {
-		return fmt.Sprintf("%dkb", memBytes/1024)
-	}
-	return fmt.Sprintf("%dmb", memBytes/1024/1024)
 }
 
 func getDefaultConcurrency() int {
@@ -101,9 +64,6 @@ func (e *Executor) initRoot() {
 		Short: "golangci-lint is a smart linters runner.",
 		Long:  `Smart, fast linters runner. Run it in cloud for every GitHub pull request on https://golangci.com`,
 		Run: func(cmd *cobra.Command, args []string) {
-			if len(args) != 0 {
-				e.log.Fatalf("Usage: golangci-lint")
-			}
 			if err := cmd.Help(); err != nil {
 				e.log.Fatalf("Can't run help: %s", err)
 			}
@@ -140,6 +100,4 @@ func initRootFlagSet(fs *pflag.FlagSet, cfg *config.Config, needVersionOption bo
 	if needVersionOption {
 		fs.BoolVar(&cfg.Run.PrintVersion, "version", false, wh("Print version"))
 	}
-
-	fs.StringVar(&cfg.Output.Color, "color", "auto", wh("Use color when printing; can be 'always', 'auto', or 'never'"))
 }

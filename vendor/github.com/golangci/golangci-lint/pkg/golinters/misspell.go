@@ -29,8 +29,7 @@ func (lint Misspell) Run(ctx context.Context, lintCtx *linter.Context) ([]result
 	}
 
 	// Figure out regional variations
-	settings := lintCtx.Settings().Misspell
-	locale := settings.Locale
+	locale := lintCtx.Settings().Misspell.Locale
 	switch strings.ToUpper(locale) {
 	case "":
 		// nothing
@@ -40,10 +39,6 @@ func (lint Misspell) Run(ctx context.Context, lintCtx *linter.Context) ([]result
 		r.AddRuleList(misspell.DictBritish)
 	case "NZ", "AU", "CA":
 		return nil, fmt.Errorf("unknown locale: %q", locale)
-	}
-
-	if len(settings.IgnoreWords) != 0 {
-		r.RemoveRule(settings.IgnoreWords)
 	}
 
 	r.Compile()

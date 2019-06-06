@@ -3,8 +3,6 @@ package processors
 import (
 	"sort"
 
-	"github.com/golangci/golangci-lint/pkg/config"
-
 	"github.com/golangci/golangci-lint/pkg/logutils"
 	"github.com/golangci/golangci-lint/pkg/result"
 )
@@ -15,17 +13,15 @@ type MaxSameIssues struct {
 	tc    textToCountMap
 	limit int
 	log   logutils.Log
-	cfg   *config.Config
 }
 
 var _ Processor = &MaxSameIssues{}
 
-func NewMaxSameIssues(limit int, log logutils.Log, cfg *config.Config) *MaxSameIssues {
+func NewMaxSameIssues(limit int, log logutils.Log) *MaxSameIssues {
 	return &MaxSameIssues{
 		tc:    textToCountMap{},
 		limit: limit,
 		log:   log,
-		cfg:   cfg,
 	}
 }
 
@@ -35,11 +31,6 @@ func (MaxSameIssues) Name() string {
 
 func (p *MaxSameIssues) Process(issues []result.Issue) ([]result.Issue, error) {
 	if p.limit <= 0 { // no limit
-		return issues, nil
-	}
-
-	if p.cfg.Issues.NeedFix {
-		// we need to fix all issues at once => we need to return all of them
 		return issues, nil
 	}
 

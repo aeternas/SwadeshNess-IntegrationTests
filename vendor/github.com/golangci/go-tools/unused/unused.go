@@ -10,9 +10,8 @@ import (
 	"strings"
 
 	"github.com/golangci/go-tools/lint"
-	. "github.com/golangci/go-tools/lint/lintdsl"
 
-	"golang.org/x/tools/go/packages"
+	"golang.org/x/tools/go/loader"
 	"golang.org/x/tools/go/types/typeutil"
 )
 
@@ -31,9 +30,9 @@ func (*LintChecker) Name() string   { return "unused" }
 func (*LintChecker) Prefix() string { return "U" }
 
 func (l *LintChecker) Init(*lint.Program) {}
-func (l *LintChecker) Checks() []lint.Check {
-	return []lint.Check{
-		{ID: "U1000", FilterGenerated: true, Fn: l.Lint},
+func (l *LintChecker) Funcs() map[string]lint.Func {
+	return map[string]lint.Func{
+		"U1000": l.Lint,
 	}
 }
 
@@ -57,7 +56,7 @@ func typString(obj types.Object) string {
 }
 
 func (l *LintChecker) Lint(j *lint.Job) {
-	unused := l.c.Check(j.Program)
+	unused := l.c.Check(j.Program.Prog)
 	for _, u := range unused {
 		name := u.Obj.Name()
 		if sig, ok := u.Obj.Type().(*types.Signature); ok && sig.Recv() != nil {
@@ -158,7 +157,7 @@ type Checker struct {
 	graph *graph
 
 	msCache      typeutil.MethodSetCache
-	prog         *lint.Program
+	lprog        *loader.Program
 	topmostCache map[*types.Scope]*types.Scope
 	interfaces   []*types.Interface
 }
@@ -199,13 +198,13 @@ func (e Error) Error() string {
 	return fmt.Sprintf("errors in %d packages", len(e.Errors))
 }
 
-func (c *Checker) Check(prog *lint.Program) []Unused {
+func (c *Checker) Check(lprog *loader.Program) []Unused {
 	var unused []Unused
-	c.prog = prog
+	c.lprog = lprog
 	if c.WholeProgram {
 		c.findExportedInterfaces()
 	}
-	for _, pkg := range prog.InitialPackages {
+	for _, pkg := range c.lprog.InitialPackages() {
 		c.processDefs(pkg)
 		c.processUses(pkg)
 		c.processTypes(pkg)
@@ -231,7 +230,6 @@ func (c *Checker) Check(prog *lint.Program) []Unused {
 	}
 	markNodesUsed(roots)
 	c.markNodesQuiet()
-	c.deduplicate()
 
 	if c.Debug != nil {
 		c.printDebugGraph(c.Debug)
@@ -247,8 +245,8 @@ func (c *Checker) Check(prog *lint.Program) []Unused {
 		}
 		found := false
 		if !false {
-			for _, pkg := range prog.InitialPackages {
-				if pkg.Types == obj.Pkg() {
+			for _, pkg := range c.lprog.InitialPackages() {
+				if pkg.Pkg == obj.Pkg() {
 					found = true
 					break
 				}
@@ -258,11 +256,23 @@ func (c *Checker) Check(prog *lint.Program) []Unused {
 			continue
 		}
 
-		pos := c.prog.Fset().Position(obj.Pos())
+		pos := c.lprog.Fset.Position(obj.Pos())
 		if pos.Filename == "" || filepath.Base(pos.Filename) == "C" {
 			continue
 		}
-
+		generated := false
+		for _, file := range c.lprog.Package(obj.Pkg().Path()).Files {
+			if c.lprog.Fset.Position(file.Pos()).Filename != pos.Filename {
+				continue
+			}
+			if len(file.Comments) > 0 {
+				generated = isGenerated(file.Comments[0].Text())
+			}
+			break
+		}
+		if generated {
+			continue
+		}
 		unused = append(unused, Unused{Obj: obj, Position: pos})
 	}
 	return unused
@@ -314,24 +324,16 @@ func (c *Checker) useNoCopyFields(typ types.Type) {
 	}
 }
 
-func (c *Checker) useExportedFields(typ types.Type, by types.Type) bool {
-	any := false
+func (c *Checker) useExportedFields(typ types.Type) {
 	if st, ok := typ.Underlying().(*types.Struct); ok {
 		n := st.NumFields()
 		for i := 0; i < n; i++ {
 			field := st.Field(i)
-			if field.Anonymous() {
-				if c.useExportedFields(field.Type(), typ) {
-					c.graph.markUsedBy(field, typ)
-				}
-			}
 			if field.Exported() {
-				c.graph.markUsedBy(field, by)
-				any = true
+				c.graph.markUsedBy(field, typ)
 			}
 		}
 	}
-	return any
 }
 
 func (c *Checker) useExportedMethods(typ types.Type) {
@@ -367,8 +369,8 @@ func (c *Checker) useExportedMethods(typ types.Type) {
 	}
 }
 
-func (c *Checker) processDefs(pkg *lint.Pkg) {
-	for _, obj := range pkg.TypesInfo.Defs {
+func (c *Checker) processDefs(pkg *loader.PackageInfo) {
+	for _, obj := range pkg.Defs {
 		if obj == nil {
 			continue
 		}
@@ -389,7 +391,7 @@ func (c *Checker) processDefs(pkg *lint.Pkg) {
 			// mark them used if an instance of the type was
 			// accessible via an interface value.
 			if !c.WholeProgram || c.ConsiderReflection {
-				c.useExportedFields(obj.Type(), obj.Type())
+				c.useExportedFields(obj.Type())
 			}
 
 			// TODO(dh): Traditionally we have not marked all exported
@@ -417,8 +419,8 @@ func (c *Checker) processDefs(pkg *lint.Pkg) {
 			if obj.Name() == "_" {
 				node := c.graph.getNode(obj)
 				node.quiet = true
-				scope := c.topmostScope(pkg.Types.Scope().Innermost(obj.Pos()), pkg.Types)
-				if scope == pkg.Types.Scope() {
+				scope := c.topmostScope(pkg.Pkg.Scope().Innermost(obj.Pos()), pkg.Pkg)
+				if scope == pkg.Pkg.Scope() {
 					c.graph.roots = append(c.graph.roots, node)
 				} else {
 					c.graph.markUsedBy(obj, scope)
@@ -468,15 +470,15 @@ func (c *Checker) processDefs(pkg *lint.Pkg) {
 	}
 }
 
-func (c *Checker) processUses(pkg *lint.Pkg) {
-	for ident, usedObj := range pkg.TypesInfo.Uses {
+func (c *Checker) processUses(pkg *loader.PackageInfo) {
+	for ident, usedObj := range pkg.Uses {
 		if _, ok := usedObj.(*types.PkgName); ok {
 			continue
 		}
 		pos := ident.Pos()
-		scope := pkg.Types.Scope().Innermost(pos)
-		scope = c.topmostScope(scope, pkg.Types)
-		if scope != pkg.Types.Scope() {
+		scope := pkg.Pkg.Scope().Innermost(pos)
+		scope = c.topmostScope(scope, pkg.Pkg)
+		if scope != pkg.Pkg.Scope() {
 			c.graph.markUsedBy(usedObj, scope)
 		}
 
@@ -489,17 +491,17 @@ func (c *Checker) processUses(pkg *lint.Pkg) {
 
 func (c *Checker) findExportedInterfaces() {
 	c.interfaces = []*types.Interface{types.Universe.Lookup("error").Type().(*types.Named).Underlying().(*types.Interface)}
-	var pkgs []*packages.Package
+	var pkgs []*loader.PackageInfo
 	if c.WholeProgram {
-		pkgs = append(pkgs, c.prog.AllPackages...)
-	} else {
-		for _, pkg := range c.prog.InitialPackages {
-			pkgs = append(pkgs, pkg.Package)
+		for _, pkg := range c.lprog.AllPackages {
+			pkgs = append(pkgs, pkg)
 		}
+	} else {
+		pkgs = c.lprog.InitialPackages()
 	}
 
 	for _, pkg := range pkgs {
-		for _, tv := range pkg.TypesInfo.Types {
+		for _, tv := range pkg.Types {
 			iface, ok := tv.Type.(*types.Interface)
 			if !ok {
 				continue
@@ -512,10 +514,10 @@ func (c *Checker) findExportedInterfaces() {
 	}
 }
 
-func (c *Checker) processTypes(pkg *lint.Pkg) {
+func (c *Checker) processTypes(pkg *loader.PackageInfo) {
 	named := map[*types.Named]*types.Pointer{}
 	var interfaces []*types.Interface
-	for _, tv := range pkg.TypesInfo.Types {
+	for _, tv := range pkg.Types {
 		if typ, ok := tv.Type.(interface {
 			Elem() types.Type
 		}); ok {
@@ -533,8 +535,8 @@ func (c *Checker) processTypes(pkg *lint.Pkg) {
 			}
 		case *types.Struct:
 			c.useNoCopyFields(obj)
-			if pkg.Types.Name() != "main" && !c.WholeProgram {
-				c.useExportedFields(obj, obj)
+			if pkg.Pkg.Name() != "main" && !c.WholeProgram {
+				c.useExportedFields(obj)
 			}
 		}
 	}
@@ -544,14 +546,11 @@ func (c *Checker) processTypes(pkg *lint.Pkg) {
 	//
 	// TODO(dh): For normal operations, that's the best we can do, as
 	// we have no idea what external users will do with our types. In
-	// whole-program mode, we could be more precise, in two ways:
+	// whole-program mode, we could be more conservative, in two ways:
 	// 1) Only consider interfaces if a type has been assigned to one
 	// 2) Use SSA and flow analysis and determine the exact set of
 	// interfaces that is relevant.
 	fn := func(iface *types.Interface) {
-		for i := 0; i < iface.NumEmbeddeds(); i++ {
-			c.graph.markUsedBy(iface.Embedded(i), iface)
-		}
 		for obj, objPtr := range named {
 			if !types.Implements(obj, iface) && !types.Implements(objPtr, iface) {
 				continue
@@ -591,10 +590,10 @@ func (c *Checker) processTypes(pkg *lint.Pkg) {
 	}
 }
 
-func (c *Checker) processSelections(pkg *lint.Pkg) {
+func (c *Checker) processSelections(pkg *loader.PackageInfo) {
 	fn := func(expr *ast.SelectorExpr, sel *types.Selection, offset int) {
-		scope := pkg.Types.Scope().Innermost(expr.Pos())
-		c.graph.markUsedBy(expr.X, c.topmostScope(scope, pkg.Types))
+		scope := pkg.Pkg.Scope().Innermost(expr.Pos())
+		c.graph.markUsedBy(expr.X, c.topmostScope(scope, pkg.Pkg))
 		c.graph.markUsedBy(sel.Obj(), expr.X)
 		if len(sel.Index()) > 1 {
 			typ := sel.Recv()
@@ -607,7 +606,7 @@ func (c *Checker) processSelections(pkg *lint.Pkg) {
 		}
 	}
 
-	for expr, sel := range pkg.TypesInfo.Selections {
+	for expr, sel := range pkg.Selections {
 		switch sel.Kind() {
 		case types.FieldVal:
 			fn(expr, sel, 0)
@@ -625,9 +624,9 @@ func dereferenceType(typ types.Type) types.Type {
 }
 
 // processConversion marks fields as used if they're part of a type conversion.
-func (c *Checker) processConversion(pkg *lint.Pkg, node ast.Node) {
+func (c *Checker) processConversion(pkg *loader.PackageInfo, node ast.Node) {
 	if node, ok := node.(*ast.CallExpr); ok {
-		callTyp := pkg.TypesInfo.TypeOf(node.Fun)
+		callTyp := pkg.TypeOf(node.Fun)
 		var typDst *types.Struct
 		var ok bool
 		switch typ := callTyp.(type) {
@@ -642,7 +641,7 @@ func (c *Checker) processConversion(pkg *lint.Pkg, node ast.Node) {
 			return
 		}
 
-		if typ, ok := pkg.TypesInfo.TypeOf(node.Args[0]).(*types.Basic); ok && typ.Kind() == types.UnsafePointer {
+		if typ, ok := pkg.TypeOf(node.Args[0]).(*types.Basic); ok && typ.Kind() == types.UnsafePointer {
 			// This is an unsafe conversion. Assume that all the
 			// fields are relevant (they are, because of memory
 			// layout)
@@ -653,7 +652,7 @@ func (c *Checker) processConversion(pkg *lint.Pkg, node ast.Node) {
 			return
 		}
 
-		typSrc, ok := dereferenceType(pkg.TypesInfo.TypeOf(node.Args[0])).Underlying().(*types.Struct)
+		typSrc, ok := dereferenceType(pkg.TypeOf(node.Args[0])).Underlying().(*types.Struct)
 		if !ok {
 			return
 		}
@@ -683,10 +682,10 @@ func (c *Checker) processConversion(pkg *lint.Pkg, node ast.Node) {
 
 // processCompositeLiteral marks fields as used if the struct is used
 // in a composite literal.
-func (c *Checker) processCompositeLiteral(pkg *lint.Pkg, node ast.Node) {
+func (c *Checker) processCompositeLiteral(pkg *loader.PackageInfo, node ast.Node) {
 	// XXX how does this actually work? wouldn't it match t{}?
 	if node, ok := node.(*ast.CompositeLit); ok {
-		typ := pkg.TypesInfo.TypeOf(node)
+		typ := pkg.TypeOf(node)
 		if _, ok := typ.(*types.Named); ok {
 			typ = typ.Underlying()
 		}
@@ -702,7 +701,7 @@ func (c *Checker) processCompositeLiteral(pkg *lint.Pkg, node ast.Node) {
 
 // processCgoExported marks functions as used if they're being
 // exported to cgo.
-func (c *Checker) processCgoExported(pkg *lint.Pkg, node ast.Node) {
+func (c *Checker) processCgoExported(pkg *loader.PackageInfo, node ast.Node) {
 	if node, ok := node.(*ast.FuncDecl); ok {
 		if node.Doc == nil {
 			return
@@ -711,13 +710,13 @@ func (c *Checker) processCgoExported(pkg *lint.Pkg, node ast.Node) {
 			if !strings.HasPrefix(cmt.Text, "//go:cgo_export_") {
 				return
 			}
-			obj := pkg.TypesInfo.ObjectOf(node.Name)
+			obj := pkg.ObjectOf(node.Name)
 			c.graph.roots = append(c.graph.roots, c.graph.getNode(obj))
 		}
 	}
 }
 
-func (c *Checker) processVariableDeclaration(pkg *lint.Pkg, node ast.Node) {
+func (c *Checker) processVariableDeclaration(pkg *loader.PackageInfo, node ast.Node) {
 	if decl, ok := node.(*ast.GenDecl); ok {
 		for _, spec := range decl.Specs {
 			spec, ok := spec.(*ast.ValueSpec)
@@ -731,11 +730,11 @@ func (c *Checker) processVariableDeclaration(pkg *lint.Pkg, node ast.Node) {
 				value := spec.Values[i]
 				fn := func(node ast.Node) bool {
 					if node3, ok := node.(*ast.Ident); ok {
-						obj := pkg.TypesInfo.ObjectOf(node3)
+						obj := pkg.ObjectOf(node3)
 						if _, ok := obj.(*types.PkgName); ok {
 							return true
 						}
-						c.graph.markUsedBy(obj, pkg.TypesInfo.ObjectOf(name))
+						c.graph.markUsedBy(obj, pkg.ObjectOf(name))
 					}
 					return true
 				}
@@ -745,17 +744,17 @@ func (c *Checker) processVariableDeclaration(pkg *lint.Pkg, node ast.Node) {
 	}
 }
 
-func (c *Checker) processArrayConstants(pkg *lint.Pkg, node ast.Node) {
+func (c *Checker) processArrayConstants(pkg *loader.PackageInfo, node ast.Node) {
 	if decl, ok := node.(*ast.ArrayType); ok {
 		ident, ok := decl.Len.(*ast.Ident)
 		if !ok {
 			return
 		}
-		c.graph.markUsedBy(pkg.TypesInfo.ObjectOf(ident), pkg.TypesInfo.TypeOf(decl))
+		c.graph.markUsedBy(pkg.ObjectOf(ident), pkg.TypeOf(decl))
 	}
 }
 
-func (c *Checker) processKnownReflectMethodCallers(pkg *lint.Pkg, node ast.Node) {
+func (c *Checker) processKnownReflectMethodCallers(pkg *loader.PackageInfo, node ast.Node) {
 	call, ok := node.(*ast.CallExpr)
 	if !ok {
 		return
@@ -764,12 +763,12 @@ func (c *Checker) processKnownReflectMethodCallers(pkg *lint.Pkg, node ast.Node)
 	if !ok {
 		return
 	}
-	if !IsType(pkg.TypesInfo.TypeOf(sel.X), "*net/rpc.Server") {
+	if types.TypeString(pkg.TypeOf(sel.X), nil) != "*net/rpc.Server" {
 		x, ok := sel.X.(*ast.Ident)
 		if !ok {
 			return
 		}
-		pkgname, ok := pkg.TypesInfo.ObjectOf(x).(*types.PkgName)
+		pkgname, ok := pkg.ObjectOf(x).(*types.PkgName)
 		if !ok {
 			return
 		}
@@ -791,14 +790,14 @@ func (c *Checker) processKnownReflectMethodCallers(pkg *lint.Pkg, node ast.Node)
 		}
 		arg = call.Args[1]
 	}
-	typ := pkg.TypesInfo.TypeOf(arg)
+	typ := pkg.TypeOf(arg)
 	ms := types.NewMethodSet(typ)
 	for i := 0; i < ms.Len(); i++ {
 		c.graph.markUsedBy(ms.At(i).Obj(), typ)
 	}
 }
 
-func (c *Checker) processAST(pkg *lint.Pkg) {
+func (c *Checker) processAST(pkg *loader.PackageInfo) {
 	fn := func(node ast.Node) bool {
 		c.processConversion(pkg, node)
 		c.processKnownReflectMethodCallers(pkg, node)
@@ -808,7 +807,7 @@ func (c *Checker) processAST(pkg *lint.Pkg) {
 		c.processArrayConstants(pkg, node)
 		return true
 	}
-	for _, file := range pkg.Syntax {
+	for _, file := range pkg.Files {
 		ast.Inspect(file, fn)
 	}
 }
@@ -914,7 +913,7 @@ func (c *Checker) isRoot(obj types.Object) bool {
 		return true
 	}
 	if obj.Exported() {
-		f := c.prog.Fset().Position(obj.Pos()).Filename
+		f := c.lprog.Fset.Position(obj.Pos()).Filename
 		if strings.HasSuffix(f, "_test.go") {
 			return strings.HasPrefix(obj.Name(), "Test") ||
 				strings.HasPrefix(obj.Name(), "Benchmark") ||
@@ -936,33 +935,6 @@ func markNodesUsed(nodes map[*graphNode]struct{}) {
 		if !wasUsed {
 			markNodesUsed(node.uses)
 		}
-	}
-}
-
-// deduplicate merges objects based on their positions. This is done
-// to work around packages existing multiple times in go/packages.
-func (c *Checker) deduplicate() {
-	m := map[token.Position]struct{ used, quiet bool }{}
-	for _, node := range c.graph.nodes {
-		obj, ok := node.obj.(types.Object)
-		if !ok {
-			continue
-		}
-		pos := c.prog.Fset().Position(obj.Pos())
-		m[pos] = struct{ used, quiet bool }{
-			m[pos].used || node.used,
-			m[pos].quiet || node.quiet,
-		}
-	}
-
-	for _, node := range c.graph.nodes {
-		obj, ok := node.obj.(types.Object)
-		if !ok {
-			continue
-		}
-		pos := c.prog.Fset().Position(obj.Pos())
-		node.used = m[pos].used
-		node.quiet = m[pos].quiet
 	}
 }
 
@@ -1084,4 +1056,9 @@ func (c *Checker) printDebugGraph(w io.Writer) {
 		fmt.Fprintf(w, "n0 -> n%d\n", root.n)
 	}
 	fmt.Fprintln(w, "}")
+}
+
+func isGenerated(comment string) bool {
+	return strings.Contains(comment, "Code generated by") ||
+		strings.Contains(comment, "DO NOT EDIT")
 }
