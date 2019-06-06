@@ -32,4 +32,4 @@ required = ["github.com/golangci/golangci-lint/cmd/golangci-lint"]
 
 [[constraint]]
   name = "github.com/golangci/golangci-lint"
-  version = "1.10.2"
+  revision = "de1d1ad903cdfdfc577ecb08d5027576e70ed2f0"
