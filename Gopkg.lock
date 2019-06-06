@@ -2,12 +2,31 @@
 
 
 [[projects]]
+  digest = "1:9f3b30d9f8e0d7040f729b82dcbc8f0dead820a133b3147ce355fc451f32d761"
+  name = "github.com/BurntSushi/toml"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "3012a1dbe2e4bd1391d42b32f0577cb7bbc7f005"
+  version = "v0.3.1"
+
+[[projects]]
   branch = "master"
   digest = "1:da6b9c16fb5e97523f153981486c7541cf36543be2f246e258973d8e58a801dc"
   name = "github.com/OpenPeeDeeP/depguard"
   packages = ["."]
   pruneopts = "UT"
   revision = "a69c782687b207067fa0e371408bb18f38e1355f"
+
+[[projects]]
+  branch = "master"
+  digest = "1:113e612ba7aabddedfd80de0d00c1d589b8a9fdb1c16e8d152d10339fda2653a"
+  name = "github.com/aeternas/SwadeshNess-packages"
+  packages = [
+    "dto",
+    "language",
+  ]
+  pruneopts = "UT"
+  revision = "a6c8514b9aeec5bf973cee627b20419fb393f3ca"
 
 [[projects]]
   digest = "1:865079840386857c809b72ce300be7580cb50d3d3129ce11bf9aa6ca2bc1934a"
@@ -24,6 +43,84 @@
   pruneopts = "UT"
   revision = "c2828203cd70a50dcccfb2761f8b1f8ceef9a8e9"
   version = "v1.4.7"
+
+[[projects]]
+  digest = "1:b57b6448d97d626ca173056800c194c7cc7f1f6f6590eafd18fe86dfb434f080"
+  name = "github.com/go-critic/go-critic"
+  packages = [
+    "checkers",
+    "checkers/internal/lintutil",
+  ]
+  pruneopts = "UT"
+  revision = "d7b3038bc7a1c35a1d02fdd7cf4094f0f1a12001"
+  version = "v0.3.4"
+
+[[projects]]
+  digest = "1:f12f53369294649f9d5046d1e8a40187ad36584201a9e1a135bf44589df1deb8"
+  name = "github.com/go-lintpack/lintpack"
+  packages = [
+    ".",
+    "astwalk",
+  ]
+  pruneopts = "UT"
+  revision = "80adc0715ac409128d0b7212719896ad8d3444b7"
+  version = "v0.5.2"
+
+[[projects]]
+  digest = "1:b9a8d81ce273b216a3ad70ff95d98179ec2f5392523a9a305b3e38c70ca9d361"
+  name = "github.com/go-toolsmith/astcast"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "a6cb19f07b66b859a53f3f2be6e4c3bba892db7e"
+  version = "v1.0.0"
+
+[[projects]]
+  digest = "1:bd091673b35859ad8f831a5b3c961805e108be72d0778b9d07fd383e59ab4287"
+  name = "github.com/go-toolsmith/astcopy"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "245af3020944a15e09072c8ad3883c1451d1fdef"
+  version = "v1.0.0"
+
+[[projects]]
+  digest = "1:db8123e0896cf805cb30c7bacad0b1a1d562edbbcd2a765ceda1af926c9a99a4"
+  name = "github.com/go-toolsmith/astequal"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "dcb477bfacd6e00a13c6d63bfc73db28dd343160"
+  version = "v1.0.0"
+
+[[projects]]
+  digest = "1:1ef70bd4e2d06e76470c3cb43b89020201dcb0b4a409d9a961df77cfaf5ae3a8"
+  name = "github.com/go-toolsmith/astfmt"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "0d74c731079884bda287cf8df9ce7b92e688af8c"
+  version = "v1.0.0"
+
+[[projects]]
+  digest = "1:f2def520d33d9ba100161b0d2101f98b2104e62bafd3e45ae5deca271ac84000"
+  name = "github.com/go-toolsmith/astp"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "6373270dee65bfb0479f2acd16d4c8e9d5db13f8"
+  version = "v1.0.0"
+
+[[projects]]
+  digest = "1:aba9fa7c6dacad505e95d984ec0b07f6b5a4691ed2f4ff36c7b732b3704627a3"
+  name = "github.com/go-toolsmith/strparse"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "830b6daa1241714c12a9b9a4a56849fe2f93aedc"
+  version = "v1.0.0"
+
+[[projects]]
+  digest = "1:a51f9845b0dec6e372e229395e019cab7c032711c6ca3ec1895a58bfdf760962"
+  name = "github.com/go-toolsmith/typep"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "cab1745ffd84a567b524317c7f90e96755b18fcf"
+  version = "v1.0.0"
 
 [[projects]]
   digest = "1:9ae31ce33b4bab257668963e844d98765b44160be4ee98cafc44637a213e530d"
@@ -105,22 +202,32 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:159ec56cf5d1e0bb8c68082ccbcad9a854be7e28d3c2a20e285305ae4ca96778"
+  digest = "1:cc3a79e8819804582643d37b0664f3fa501dd0b6be958ebe77677e2f69aaba95"
   name = "github.com/golangci/go-tools"
   packages = [
+    "arg",
+    "callgraph",
+    "callgraph/static",
+    "config",
     "deprecated",
     "functions",
     "internal/sharedcheck",
     "lint",
+    "lint/lintdsl",
     "lint/lintutil",
+    "lint/lintutil/format",
     "simple",
+    "ssa",
+    "ssa/ssautil",
+    "ssautil",
     "staticcheck",
     "staticcheck/vrp",
+    "stylecheck",
     "unused",
     "version",
   ]
   pruneopts = "UT"
-  revision = "93eecd106a0b4f93401f91127a550709f819193d"
+  revision = "35a9f45a5db090b0227d692d823151104cd695fa"
 
 [[projects]]
   branch = "master"
@@ -150,7 +257,7 @@
   revision = "f021c4179c8204f48aa93990e6badea1b3f9446d"
 
 [[projects]]
-  digest = "1:2b9128d7a3135e2c69c995dc3d794bdf781feb180fe14fccde1328b6b47cd35a"
+  digest = "1:d2889685a8ae9dd4483887a95987cfd75fb6fd0bec24abb3493b2737a6b414a2"
   name = "github.com/golangci/golangci-lint"
   packages = [
     "cmd/golangci-lint",
@@ -159,6 +266,9 @@
     "pkg/exitcodes",
     "pkg/fsutils",
     "pkg/golinters",
+    "pkg/golinters/goanalysis",
+    "pkg/golinters/goanalysis/checker",
+    "pkg/golinters/goanalysis/passes/nilness",
     "pkg/goutil",
     "pkg/lint",
     "pkg/lint/astcache",
@@ -173,8 +283,7 @@
     "pkg/timeutils",
   ]
   pruneopts = "UT"
-  revision = "f5f770165069eb1e70455ee42fbf51ab4ea4fea4"
-  version = "v1.11.2"
+  revision = "de1d1ad903cdfdfc577ecb08d5027576e70ed2f0"
 
 [[projects]]
   branch = "master"
@@ -189,39 +298,11 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:bfaf14a1dd31e57f9b433739af5f0411558d9ba90566c7342c02da9a48ea8e75"
-  name = "github.com/golangci/govet"
-  packages = [
-    ".",
-    "lib/cfg",
-    "lib/whitelist",
-  ]
-  pruneopts = "UT"
-  revision = "44ddbe260190d79165f4150b828650780405d801"
-
-[[projects]]
-  branch = "master"
   digest = "1:3a5ea92f78579dfd319260ce995575c07890c8aff429035637287a00da664647"
   name = "github.com/golangci/ineffassign"
   packages = ["."]
   pruneopts = "UT"
   revision = "2ee8f2867dde308c46d401d6d30f6c644094b167"
-
-[[projects]]
-  branch = "master"
-  digest = "1:8a043d165b607fada34aceb22e8f5d1fb80871f5b2d6c3e5d5933c37094c9228"
-  name = "github.com/golangci/interfacer"
-  packages = ["check"]
-  pruneopts = "UT"
-  revision = "01958817a6ec5bb4bb01d0b9a5f3fca30923ebbf"
-
-[[projects]]
-  branch = "master"
-  digest = "1:59b6cfe4fe54ed13f7570c74b2581100ad6f65cf421b3d5c992d863b238fbc39"
-  name = "github.com/golangci/lint"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "c2187e7932b5ee7899eaa2e83bcf00e251abd274"
 
 [[projects]]
   branch = "master"
@@ -265,15 +346,9 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:f821e22281a3dea9186b73b19a70dcbddad87dba3a3becdb3b03c8d20816dac3"
+  digest = "1:d6b4b061c2364385056837c928c99b090ce914354330e7765db226b644d7b9ed"
   name = "github.com/golangci/tools"
   packages = [
-    "go/callgraph",
-    "go/callgraph/cha",
-    "go/callgraph/rta",
-    "go/callgraph/static",
-    "go/ssa",
-    "go/ssa/ssautil",
     "imports",
     "internal/fastwalk",
     "internal/gopathwalk",
@@ -288,14 +363,6 @@
   packages = ["."]
   pruneopts = "UT"
   revision = "28b1c447d1f4a810737ee6ab40ea6c1d0ceae4ad"
-
-[[projects]]
-  branch = "master"
-  digest = "1:5b3fb341e79acec135f1241e4d72b9a8231f705852f752142fb800115f50ba80"
-  name = "github.com/golangci/unparam"
-  packages = ["check"]
-  pruneopts = "UT"
-  revision = "7ad9dbcccc1667190475751c43137253b310dc10"
 
 [[projects]]
   digest = "1:c0d19ab64b32ce9fe5cf4ddceba78d5bc9807f0016db6b1183599da3dcc24d10"
@@ -366,6 +433,14 @@
   pruneopts = "UT"
   revision = "6ca4dbf54d38eea1a992b3c722a76a5d1c4cb25c"
   version = "v0.0.4"
+
+[[projects]]
+  digest = "1:5d231480e1c64a726869bc4142d270184c419749d34f167646baa21008eb0a79"
+  name = "github.com/mitchellh/go-homedir"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "af06845cf3004701891bf4fdb884bfe4920b3727"
+  version = "v1.1.0"
 
 [[projects]]
   digest = "1:53bc4cd4914cd7cd52139990d5170d6dc99067ae31c56530621b18b35fc30318"
@@ -513,24 +588,59 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:aac721c5ec779073b35cf7a51b7764d13f6db2243d650965d2c71469e8994e5b"
+  digest = "1:3bf2013bfc14022ef0973bec74b71ab10fbfc950e3e72c6e2976732c90abc91b"
   name = "golang.org/x/tools"
   packages = [
+    "go/analysis",
+    "go/analysis/passes/asmdecl",
+    "go/analysis/passes/assign",
+    "go/analysis/passes/atomic",
+    "go/analysis/passes/atomicalign",
+    "go/analysis/passes/bools",
+    "go/analysis/passes/buildssa",
+    "go/analysis/passes/buildtag",
+    "go/analysis/passes/cgocall",
+    "go/analysis/passes/composite",
+    "go/analysis/passes/copylock",
+    "go/analysis/passes/ctrlflow",
+    "go/analysis/passes/httpresponse",
+    "go/analysis/passes/inspect",
+    "go/analysis/passes/internal/analysisutil",
+    "go/analysis/passes/loopclosure",
+    "go/analysis/passes/lostcancel",
+    "go/analysis/passes/nilfunc",
+    "go/analysis/passes/printf",
+    "go/analysis/passes/shadow",
+    "go/analysis/passes/shift",
+    "go/analysis/passes/stdmethods",
+    "go/analysis/passes/structtag",
+    "go/analysis/passes/tests",
+    "go/analysis/passes/unmarshal",
+    "go/analysis/passes/unreachable",
+    "go/analysis/passes/unsafeptr",
+    "go/analysis/passes/unusedresult",
     "go/ast/astutil",
+    "go/ast/inspector",
     "go/buildutil",
+    "go/cfg",
     "go/gcexportdata",
     "go/internal/cgo",
     "go/internal/gcimporter",
+    "go/internal/packagesdriver",
     "go/loader",
     "go/packages",
+    "go/ssa",
+    "go/ssa/ssautil",
     "go/types/typeutil",
     "imports",
     "internal/fastwalk",
     "internal/gopathwalk",
+    "internal/imports",
+    "internal/module",
     "internal/semver",
   ]
   pruneopts = "UT"
-  revision = "96e9e165b75e735822645eff82850b08c377be36"
+  revision = "0139d5756a7dfc6302f04af275a50cbc37ea0153"
 
 [[projects]]
   digest = "1:342378ac4dcb378a5448dd723f0784ae519383532f5e70ade24132c4c8693202"
@@ -539,6 +649,30 @@
   pruneopts = "UT"
   revision = "5420a8b6744d3b0345ab293f6fcba19c978f1183"
   version = "v2.2.1"
+
+[[projects]]
+  branch = "master"
+  digest = "1:ef98efcb9462d27d251466fdc89656c5dbc28f4dc6b428a4270c3ba668ea412d"
+  name = "mvdan.cc/interfacer"
+  packages = ["check"]
+  pruneopts = "UT"
+  revision = "c20040233aedb03da82d460eca6130fcd91c629a"
+
+[[projects]]
+  branch = "master"
+  digest = "1:521f15c98723cb42db85f5b83980ffa5f707ddaff12976a0d366e6a6cdd1f791"
+  name = "mvdan.cc/lint"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "adc824a0674b99099789b6188a058d485eaf61c0"
+
+[[projects]]
+  branch = "master"
+  digest = "1:49663f044145c794116bde2cbcc8045164717b068a3194d26ae2243874de5994"
+  name = "mvdan.cc/unparam"
+  packages = ["check"]
+  pruneopts = "UT"
+  revision = "1b9ccfa71afe53433971717161c9666adfc4d8c5"
 
 [[projects]]
   branch = "master"
@@ -559,6 +693,10 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  input-imports = ["github.com/golangci/golangci-lint/cmd/golangci-lint"]
+  input-imports = [
+    "github.com/aeternas/SwadeshNess-packages/dto",
+    "github.com/aeternas/SwadeshNess-packages/language",
+    "github.com/golangci/golangci-lint/cmd/golangci-lint",
+  ]
   solver-name = "gps-cdcl"
   solver-version = 1
