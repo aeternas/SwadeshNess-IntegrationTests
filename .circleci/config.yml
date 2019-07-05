@@ -43,6 +43,9 @@ aliases:
       docker login -u $DOCKER_USERNAME --password-stdin < docker_passwd && rm docker_passwd && \
       docker build -t aeternas/swadeshness-tests:$CIRCLE_BRANCH . && \
       docker push aeternas/swadeshness-tests:$CIRCLE_BRANCH
+      if [[ $CIRCLE_BRANCH == "master" ]]; then \
+                                      docker tag aeternas/swadeshness-tests:master aeternas/swadeshness-tests:latest && \
+                                      docker push aeternas/swadeshness-tests:latest; fi
   - &persist_to_workspace
       root: .
       paths:
