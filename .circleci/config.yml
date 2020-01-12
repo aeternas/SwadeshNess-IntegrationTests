@@ -24,8 +24,6 @@ aliases:
   - &restore_cache
     keys:
     - v1-dep-{{ .Branch }}-
-    - v1-dep-master-
-    - v1-dep-
   - &lint
     name: Install & Execute linter
     command: |
