@@ -134,8 +134,10 @@ func requestTranslationDeterminedV1() {
 		log.Fatalf("Error unmarshalling body")
 	}
 
-	if data.Results[0].Results[3].Translation != "Merhaba Dünya" {
-		log.Fatalf("Result translation doesn't match expected one")
+	translationResult := data.Results[0].Results[3].Translation
+
+	if data != "Merhaba Dünya" {
+		log.Fatalf("Result translation doesn't match expected one: %v", translationResult)
 	}
 }
 
