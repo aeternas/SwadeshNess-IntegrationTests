@@ -136,7 +136,7 @@ func requestTranslationDeterminedV1() {
 
 	translationResult := data.Results[0].Results[3].Translation
 
-	if data != "Merhaba Dünya" {
+	if translationResult != "Merhaba Dünya" {
 		log.Fatalf("Result translation doesn't match expected one: %v", translationResult)
 	}
 }
