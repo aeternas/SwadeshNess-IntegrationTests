@@ -155,8 +155,10 @@ func requestTranslationRandomizedV1() {
 		log.Fatalf("Error unmarshalling body")
 	}
 
-	if data.Results[0].Results[3].Translation != fmt.Sprintf("Merhaba Dünya %v", num) {
-		log.Fatalf("Result translation doesn't match expected one")
+	translationResult := data.Results[0].Results[3].Translation
+
+	if translationResult != fmt.Sprintf("Merhaba Dünya %v", num) {
+		log.Fatalf("Result translation doesn't match expected one: %v", translationResult)
 	}
 }
 
