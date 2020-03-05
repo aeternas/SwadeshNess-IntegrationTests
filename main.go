@@ -159,7 +159,7 @@ func requestTranslationRandomizedV1() {
 
 	translationResult := data.Results[0].Results[4].Translation
 
-	if translationResult != fmt.Sprintf("Merhaba Dünya %v", num) {
+	if translationResult != fmt.Sprintf("Merhaba, Dünya %v", num) {
 		log.Fatalf("Result translation doesn't match expected one: %v", translationResult)
 	}
 }
