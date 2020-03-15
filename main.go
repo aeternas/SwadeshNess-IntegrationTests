@@ -11,6 +11,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -136,7 +137,9 @@ func requestTranslationDeterminedV1() {
 
 	translationResult := data.Results[0].Results[4].Translation
 
-	if translationResult != "Merhaba Dünya" {
+	var containsTranslatedWords = strings.Contains(translationResult, "Merhaba") && strings.Contains(translationResult, "Dünya")
+
+	if containsTranslatedWords == false {
 		log.Fatalf("Result translation doesn't match expected one: %v", translationResult)
 	}
 }
