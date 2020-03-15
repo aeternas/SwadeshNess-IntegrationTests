@@ -139,7 +139,7 @@ func requestTranslationDeterminedV1() {
 
 	var containsTranslatedWords = strings.Contains(translationResult, "Merhaba") && strings.Contains(translationResult, "Dünya")
 
-	if containsTranslatedWords == false {
+	if !containsTranslatedWords {
 		log.Fatalf("Result translation doesn't match expected one: %v", translationResult)
 	}
 }
