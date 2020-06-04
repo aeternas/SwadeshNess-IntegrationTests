@@ -43,8 +43,8 @@ aliases:
       docker build --build-arg GOLANG_VERSION=$GOLANG_VERSION -t aeternas/swadeshness-tests:$CIRCLE_BRANCH . && \
       docker push aeternas/swadeshness-tests:$CIRCLE_BRANCH && \
       if [[ $CIRCLE_BRANCH == "master" ]]; then \
-                                      docker tag aeternas/swadeshness-tests:master aeternas/swadeshness-tests:latest && \
-                                      docker push aeternas/swadeshness-tests:latest; fi
+        docker tag aeternas/swadeshness-tests:master aeternas/swadeshness-tests:latest && \
+        docker push aeternas/swadeshness-tests:latest; fi
   - &persist_to_workspace
       root: .
       paths:
