@@ -91,7 +91,7 @@ func requestVersionV1() string {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return string(resp.StatusCode)
+		return fmt.Sprint(resp.StatusCode)
 	}
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
 
